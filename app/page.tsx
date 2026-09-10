@@ -220,12 +220,13 @@ export default function Home() {
                 placeholder={`Example:
 
 John Smith
-Construction worker
-3 years experience
-VCA
-Driving licence B
-English and Dutch
-...`}
+Sales assistant
+2 years experience
+Customer service
+Good communication
+English
+Driving licence
+Manchester`}
               />
 
               <div className="stepRow">
@@ -251,6 +252,7 @@ English and Dutch
 
                 <div>
                   <h2>Tell us about yourself</h2>
+
                   <p>
                     Keep it simple. Write normally — we&apos;ll turn it into a
                     professional CV.
@@ -264,12 +266,13 @@ English and Dutch
                 onChange={(e) => setAboutMe(e.target.value)}
                 placeholder={`Example:
 
-Steigerbouw
-2 jaar ervaring
-VCA
-Rijbewijs B
-English and Bulgarian
-Amsterdam
+Sales assistant
+2 years experience
+Customer service
+Good communication
+English
+Driving licence
+Manchester
 
 You can write as little or as much as you want.`}
               />
@@ -378,6 +381,7 @@ You can write as little or as much as you want.`}
           >
             <div className="sectionHeader">
               <p className="eyebrow">YOUR PREVIEW</p>
+
               <h2>Your CV is ready</h2>
 
               <p
@@ -419,7 +423,9 @@ You can write as little or as much as you want.`}
                         <span key={keyword}>{keyword}</span>
                       ))
                   ) : (
-                    <span className="muted">No suggestions yet</span>
+                    <span className="muted">
+                      No suggestions yet
+                    </span>
                   )}
                 </div>
               </div>
@@ -431,20 +437,6 @@ You can write as little or as much as you want.`}
                   {result.cvPreview ||
                     "Your CV preview will appear here."}
                 </pre>
-
-                <div className="unlockBox">
-                  <span className="lockIcon">🔒</span>
-
-                  <strong>Unlock your full CV</strong>
-
-                  <p>
-                    Full CV + cover letter + 10 applications
-                  </p>
-
-                  <button className="unlockButton">
-                    Unlock for €6.99
-                  </button>
-                </div>
               </div>
 
               <div className="previewItem documentItem">
@@ -454,19 +446,68 @@ You can write as little or as much as you want.`}
                   {result.coverLetterPreview ||
                     "Your cover letter preview will appear here."}
                 </pre>
-
-                <div className="unlockBox">
-                  <span className="lockIcon">🔒</span>
-
-                  <strong>Unlock the full application</strong>
-
-                  <p>10 applications included</p>
-
-                  <button className="unlockButton">
-                    Unlock for €6.99
-                  </button>
-                </div>
               </div>
+            </div>
+
+            {/* SINGLE UNLOCK BOX */}
+            <div
+              className="unlockBox"
+              style={{
+                maxWidth: "720px",
+                margin: "16px auto 0",
+                textAlign: "center",
+                padding: "24px",
+              }}
+            >
+              <span
+                className="lockIcon"
+                style={{
+                  display: "block",
+                  fontSize: "22px",
+                  marginBottom: "8px",
+                }}
+              >
+                🔒
+              </span>
+
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: "20px",
+                  marginBottom: "6px",
+                }}
+              >
+                Unlock your full application
+              </strong>
+
+              <p
+                style={{
+                  margin: "0 0 16px",
+                  opacity: 0.7,
+                }}
+              >
+                Full CV + cover letter + 10 applications
+              </p>
+
+              <button
+                className="unlockButton"
+                style={{
+                  width: "100%",
+                  maxWidth: "420px",
+                }}
+              >
+                Unlock for €6.99
+              </button>
+
+              <p
+                style={{
+                  margin: "10px 0 0",
+                  fontSize: "13px",
+                  opacity: 0.5,
+                }}
+              >
+                One-time payment. No subscription.
+              </p>
             </div>
           </section>
         )}
@@ -483,7 +524,9 @@ You can write as little or as much as you want.`}
           }}
         >
           <div style={{ marginBottom: "20px" }}>
-            <p className="eyebrow">WHAT YOU&apos;LL GET</p>
+            <p className="eyebrow">
+              WHAT YOU&apos;LL GET
+            </p>
 
             <h2
               style={{
