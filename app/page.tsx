@@ -75,13 +75,16 @@ export default function Home() {
         try {
           payload = JSON.parse(rawBody);
         } catch {
-          throw new Error("We couldn't process your request. Please try again.");
+          throw new Error(
+            "We couldn't process your request. Please try again."
+          );
         }
       }
 
       if (!response.ok) {
         throw new Error(
-          payload.error || "We couldn't process your request. Please try again."
+          payload.error ||
+            "We couldn't process your request. Please try again."
         );
       }
 
@@ -187,7 +190,6 @@ export default function Home() {
             <>
               <div className="stepRow">
                 <span>1</span>
-
                 <div>
                   <h2>Paste your current CV</h2>
                   <p>Copy the text from your CV</p>
@@ -203,7 +205,6 @@ export default function Home() {
 
               <div className="stepRow">
                 <span>2</span>
-
                 <div>
                   <h2>Paste the job description</h2>
                   <p>Paste the job you want to apply for</p>
@@ -221,7 +222,6 @@ export default function Home() {
             <>
               <div className="stepRow">
                 <span>1</span>
-
                 <div>
                   <h2>What job do you want?</h2>
                   <p>Example: Office Administrator</p>
@@ -242,7 +242,6 @@ export default function Home() {
 
               <div className="stepRow">
                 <span>2</span>
-
                 <div>
                   <h2>Your experience</h2>
                   <p>Keep it simple — we&apos;ll do the writing</p>
@@ -258,7 +257,6 @@ export default function Home() {
 
               <div className="stepRow">
                 <span>3</span>
-
                 <div>
                   <h2>Skills</h2>
                   <p>What are you good at?</p>
@@ -274,7 +272,6 @@ export default function Home() {
 
               <div className="stepRow">
                 <span>4</span>
-
                 <div>
                   <h2>Education</h2>
                 </div>
@@ -294,7 +291,6 @@ export default function Home() {
 
               <div className="stepRow">
                 <span>5</span>
-
                 <div>
                   <h2>Languages & location</h2>
                 </div>
@@ -397,9 +393,7 @@ export default function Home() {
 
                   <strong>Unlock your full CV</strong>
 
-                  <p>
-                    Full CV + cover letter + 10 applications
-                  </p>
+                  <p>Full CV + cover letter + 10 applications</p>
 
                   <button className="unlockButton">
                     Unlock for €6.99
@@ -430,11 +424,141 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        <section
+          style={{
+            maxWidth: "720px",
+            margin: "36px auto 0",
+            padding: "24px",
+            borderRadius: "20px",
+            border: "1px solid rgba(255,255,255,.1)",
+            background: "rgba(255,255,255,.035)",
+          }}
+        >
+          <div style={{ marginBottom: "20px" }}>
+            <p className="eyebrow">WHAT YOU&apos;LL GET</p>
+
+            <h2
+              style={{
+                margin: "6px 0 8px",
+                fontSize: "24px",
+              }}
+            >
+              Everything you need to apply
+            </h2>
+
+            <p
+              style={{
+                opacity: 0.7,
+                margin: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              A complete application package built around your real
+              experience.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Tailored CV</strong>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                Better summary, stronger wording, cleaner structure and
+                experience matched to the role.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Cover letter</strong>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                A professional cover letter written specifically for the job
+                you&apos;re applying to.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Match insights</strong>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                See your match score and important keywords before you apply.
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "18px",
+              paddingTop: "18px",
+              borderTop: "1px solid rgba(255,255,255,.08)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "16px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <strong>10 full applications</strong>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  opacity: 0.6,
+                  fontSize: "14px",
+                }}
+              >
+                One payment. No subscription.
+              </p>
+            </div>
+
+            <strong style={{ fontSize: "22px" }}>€6.99</strong>
+          </div>
+        </section>
       </section>
 
-      <footer>
-        ApplyFast · Simple, truthful CV creation
-      </footer>
+      <footer>ApplyFast · Simple, truthful CV creation</footer>
     </main>
   );
 }
