@@ -8,19 +8,23 @@ const openai = new OpenAI({
 
 type RequestBody = {
   mode?: "tailor" | "build";
+
+  // Tailor mode
   cvText?: string;
   jobDescription?: string;
-  targetJob?: string;
-  experience?: string;
-  skills?: string;
-  education?: string;
-  languages?: string;
-  location?: string;
+
+  // Build mode
+  aboutMe?: string;
+  fullName?: string;
+  email?: string;
+  phone?: string;
 };
 
-function makePreview(text: string, percent = 0.05) {
+function makePreview(text: string, percent: number) {
   if (!text) return "";
+
   const minChars = 90;
+
   const previewLength = Math.max(
     minChars,
     Math.floor(text.length * percent)
@@ -49,15 +53,22 @@ export async function POST(request: Request) {
 
     if (mode !== "tailor" && mode !== "build") {
       return Response.json(
-        { error: "Invalid request mode." },
+        {
+          error: "Invalid request.",
+        },
         { status: 400 }
       );
     }
 
     let prompt = "";
 
+    // =====================================================
+    // MODE 1 — USER ALREADY HAS A CV
+    // =====================================================
+
     if (mode === "tailor") {
       const cvText = String(body.cvText || "").trim();
+
       const jobDescription = String(
         body.jobDescription || ""
       ).trim();
@@ -78,45 +89,99 @@ You are ApplyFast, a professional CV tailoring assistant.
 The user already has a CV and wants to adapt it to a specific job.
 
 ORIGINAL CV:
+
 ${cvText}
 
 JOB DESCRIPTION:
+
 ${jobDescription}
 
-Your job:
-- Compare the CV with the job description.
-- Improve wording, structure, relevance and emphasis.
-- Make the CV better aligned with the role.
-- Never invent any experience.
-- Never invent skills.
-- Never invent education.
-- Never invent certifications.
-- Never invent dates.
-- Never invent achievements.
-- Never invent job titles.
-- Only use facts already present in the user's CV.
+YOUR TASK:
+
+Create a stronger and more professional version of the user's CV for this specific job.
+
+Improve:
+- wording
+- clarity
+- structure
+- relevance
+- professional presentation
+- ordering of information
+- emphasis on experience that is relevant to the job
+
+Use relevant keywords from the job description ONLY when they are genuinely supported by information already present in the CV.
+
+Also create a short professional cover letter for this specific role.
+
+STRICT TRUTH RULE:
+
+Never invent information.
+
+DO NOT invent:
+- employers
+- company names
+- work experience
+- responsibilities
+- job titles
+- dates
+- years of experience
+- achievements
+- education
+- qualifications
+- certificates
+- licences
+- languages
+- technical skills
+- personal details
+
+If the job requires something the user has not mentioned, DO NOT add it to the CV.
+
+Instead, include it in missingKeywords.
+
+MATCH SCORE:
+
+Give a realistic matchScore from 0 to 100 based only on the information in the user's real CV compared with the job description.
+
+MISSING KEYWORDS:
+
+Return useful missing or weak keywords, requirements, skills or certifications that appear important for the job but are not clearly supported by the user's CV.
+
+TAILORED CV:
+
+Create a complete, clean and professional CV.
+
+Do not use fake placeholders.
+
+If information such as phone number, email, address or another detail is not present, simply omit it.
+
+COVER LETTER:
+
+Write a short professional cover letter for the job using only information that is actually supported by the CV.
 
 Return:
-1. A realistic matchScore from 0 to 100.
-2. Up to 8 important missing or weak keywords.
-3. A complete tailored CV in clean plain text.
-4. A short professional cover letter.
+- matchScore
+- missingKeywords
+- tailoredResume
+- coverLetter
       `.trim();
     }
 
-    if (mode === "build") {
-      const targetJob = String(body.targetJob || "").trim();
-      const experience = String(body.experience || "").trim();
-      const skills = String(body.skills || "").trim();
-      const education = String(body.education || "").trim();
-      const languages = String(body.languages || "").trim();
-      const location = String(body.location || "").trim();
+    // =====================================================
+    // MODE 2 — BUILD A CV FROM SIMPLE HUMAN INPUT
+    // =====================================================
 
-      if (!targetJob || !experience) {
+    if (mode === "build") {
+      const aboutMe = String(body.aboutMe || "").trim();
+
+      const fullName = String(body.fullName || "").trim();
+      const email = String(body.email || "").trim();
+      const phone = String(body.phone || "").trim();
+
+      if (!aboutMe) {
         return Response.json(
           {
             error:
-              "Tell us the job you want and your experience.",
+              "Tell us a little about yourself first.",
           },
           { status: 400 }
         );
@@ -125,48 +190,183 @@ Return:
       prompt = `
 You are ApplyFast, a professional CV builder.
 
-The user wants you to create a CV from the information below.
+The user does NOT need to know how to write a CV.
 
-TARGET JOB:
-${targetJob}
+They may give you extremely short, casual, badly written, mixed-language or incomplete information.
 
-EXPERIENCE:
-${experience}
+Your job is to understand their information and turn it into a clean professional CV.
+
+USER'S INFORMATION:
+
+${aboutMe}
+
+OPTIONAL CONTACT DETAILS:
+
+Full name:
+${fullName || "Not provided"}
+
+Email:
+${email || "Not provided"}
+
+Phone:
+${phone || "Not provided"}
+
+IMPORTANT EXAMPLE:
+
+The user might write only:
+
+"Steigerbouw
+2 jaar ervaring
+VCA
+English and Bulgarian
+Rijbewijs B
+Amsterdam"
+
+You should understand the meaning of this information.
+
+For example:
+- Steigerbouw = scaffolding / scaffolding work
+- 2 jaar ervaring = 2 years of experience
+- VCA = VCA certificate
+- English and Bulgarian = languages
+- Rijbewijs B = driving licence category B
+- Amsterdam = location
+
+You may professionally rewrite and organize those facts.
+
+But you MUST NOT add facts the user never provided.
+
+STRICT TRUTH RULE:
+
+DO NOT invent:
+- employer names
+- company names
+- exact employment dates
+- exact job dates
+- years of experience
+- job titles that are unsupported
+- responsibilities the user did not provide or clearly imply
+- achievements
+- education
+- diplomas
+- certificates
+- licences
+- languages
+- technical skills
+- addresses
+- phone numbers
+- email addresses
+
+You MAY:
+- correct grammar
+- translate simple terms when needed
+- professionally phrase the user's information
+- organize information into CV sections
+- infer the obvious meaning of simple statements
+
+Example:
+
+If the user says:
+"2 jaar ervaring"
+
+You can write:
+"2 years of experience"
+
+But you cannot invent:
+"Worked at ABC Scaffolding from 2022–2024."
+
+If the user says:
+"Steigerbouw"
+
+You can describe their field professionally as scaffolding work.
+
+If the user says:
+"VCA"
+
+You can include VCA under Certifications.
+
+If the user says:
+"Rijbewijs B"
+
+You can include Driving Licence B.
+
+If information is missing, OMIT IT.
+
+DO NOT output placeholders such as:
+[FULL NAME]
+[EMAIL]
+[PHONE]
+[COMPANY NAME]
+[DATE]
+
+If the user did not provide it, leave it out.
+
+CREATE A PROFESSIONAL CV WITH RELEVANT SECTIONS SUCH AS:
+
+- Name/contact information, only if provided
+- Professional profile
+- Work experience
+- Skills
+- Certifications
+- Driving licence
+- Languages
+- Location
+- Education, only if provided
+
+Only include sections that make sense from the information given.
+
+PROFESSIONAL PROFILE:
+
+Turn the user's simple information into a short, strong professional introduction without inventing facts.
+
+WORK EXPERIENCE:
+
+If the user gives experience but no employer or dates, create a professional experience description WITHOUT inventing employer names or dates.
 
 SKILLS:
-${skills || "Not provided"}
 
-EDUCATION:
-${education || "Not provided"}
+Include skills explicitly provided or directly supported by the user's described work.
 
-LANGUAGES:
-${languages || "Not provided"}
+Do not invent unrelated skills.
 
-LOCATION:
-${location || "Not provided"}
+PROFILE STRENGTH:
 
-Your job:
-- Create a professional CV targeted toward the requested job.
-- Improve the wording and presentation of the user's real information.
-- Never invent employment.
-- Never invent experience.
-- Never invent skills.
-- Never invent education.
-- Never invent qualifications.
-- Never invent certifications.
-- Never invent dates.
-- Never invent achievements.
-- If some information is missing, simply omit that detail instead of inventing it.
+Use the matchScore field as a Profile Strength score from 0 to 100.
+
+This is NOT a job match score.
+
+Judge the strength based on:
+- amount of useful information provided
+- experience clarity
+- skills provided
+- certificates/licences
+- languages
+- contact information
+- overall completeness
+
+RECOMMENDED KEYWORDS:
+
+Return useful keywords that could strengthen the person's profile IF they are truthful.
+
+Do NOT claim the person already has these skills.
+
+COVER LETTER:
+
+Create a short professional general cover letter suitable for the type of work described.
+
+If there is no exact company or vacancy, do not invent one.
 
 Return:
-1. A realistic cvScore from 0 to 100, using the matchScore field.
-2. Up to 8 useful keywords the user may want to include if truthful.
-3. A complete professional CV in clean plain text.
-4. A short professional cover letter for the target job.
+- matchScore
+- missingKeywords
+- tailoredResume
+- coverLetter
       `.trim();
     }
 
-    console.log("[ApplyFast] Request starting", { mode });
+    console.log("[ApplyFast] Request starting", {
+      mode,
+    });
 
     const response = await openai.responses.create({
       model: "gpt-5.6-luna",
@@ -178,26 +378,34 @@ Return:
           type: "json_schema",
           name: "applyfast_result",
           strict: true,
+
           schema: {
             type: "object",
             additionalProperties: false,
+
             properties: {
               matchScore: {
                 type: "number",
+                minimum: 0,
+                maximum: 100,
               },
+
               missingKeywords: {
                 type: "array",
                 items: {
                   type: "string",
                 },
               },
+
               tailoredResume: {
                 type: "string",
               },
+
               coverLetter: {
                 type: "string",
               },
             },
+
             required: [
               "matchScore",
               "missingKeywords",
@@ -209,7 +417,9 @@ Return:
       },
     });
 
-    console.log("[ApplyFast] Response received");
+    console.log("[ApplyFast] Response received", {
+      mode,
+    });
 
     if (!response.output_text) {
       console.error("[ApplyFast] Empty response");
@@ -223,7 +433,12 @@ Return:
       );
     }
 
-    let result;
+    let result: {
+      matchScore: number;
+      missingKeywords: string[];
+      tailoredResume: string;
+      coverLetter: string;
+    };
 
     try {
       result = JSON.parse(response.output_text);
@@ -239,15 +454,27 @@ Return:
       );
     }
 
+    // IMPORTANT:
+    // The full CV and full cover letter stay on the server.
+    // Before payment, the browser receives only a limited preview.
+
     return Response.json({
       matchScore: result.matchScore,
+
       missingKeywords: Array.isArray(result.missingKeywords)
         ? result.missingKeywords.slice(0, 3)
         : [],
-      cvPreview: makePreview(result.tailoredResume, 0.05),
+
+      // 12% CV preview
+      cvPreview: makePreview(
+        result.tailoredResume,
+        0.12
+      ),
+
+      // 8% cover letter preview
       coverLetterPreview: makePreview(
         result.coverLetter,
-        0.05
+        0.08
       ),
     });
   } catch (error: any) {
