@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Mode = "tailor" | "build";
 
@@ -14,19 +14,32 @@ type Result = {
 export default function Home() {
   const [mode, setMode] = useState<Mode>("tailor");
 
+  // Tailor mode
   const [cvText, setCvText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
 
-  const [targetJob, setTargetJob] = useState("");
-  const [experience, setExperience] = useState("");
-  const [skills, setSkills] = useState("");
-  const [education, setEducation] = useState("");
-  const [languages, setLanguages] = useState("");
-  const [location, setLocation] = useState("");
+  // Build mode
+  const [aboutMe, setAboutMe] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
 
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const resultRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (result && resultRef.current) {
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 150);
+    }
+  }, [result]);
 
   async function generate() {
     setError("");
@@ -40,8 +53,8 @@ export default function Home() {
     }
 
     if (mode === "build") {
-      if (!targetJob.trim() || !experience.trim()) {
-        setError("Tell us the job you want and your experience.");
+      if (!aboutMe.trim()) {
+        setError("Tell us a little about yourself first.");
         return;
       }
     }
@@ -56,14 +69,16 @@ export default function Home() {
         },
         body: JSON.stringify({
           mode,
+
+          // Tailor
           cvText,
           jobDescription,
-          targetJob,
-          experience,
-          skills,
-          education,
-          languages,
-          location,
+
+          // Build
+          aboutMe,
+          fullName,
+          email,
+          phone,
         }),
       });
 
@@ -130,6 +145,7 @@ export default function Home() {
           </p>
         </div>
 
+        {/* MODE SELECTOR */}
         <div
           style={{
             display: "flex",
@@ -190,9 +206,10 @@ export default function Home() {
             <>
               <div className="stepRow">
                 <span>1</span>
+
                 <div>
                   <h2>Paste your current CV</h2>
-                  <p>Copy the text from your CV</p>
+                  <p>Copy and paste the text from your CV</p>
                 </div>
               </div>
 
@@ -200,11 +217,20 @@ export default function Home() {
                 rows={9}
                 value={cvText}
                 onChange={(e) => setCvText(e.target.value)}
-                placeholder="Paste your CV here..."
+                placeholder={`Example:
+
+John Smith
+Construction worker
+3 years experience
+VCA
+Driving licence B
+English and Dutch
+...`}
               />
 
               <div className="stepRow">
                 <span>2</span>
+
                 <div>
                   <h2>Paste the job description</h2>
                   <p>Paste the job you want to apply for</p>
@@ -222,84 +248,62 @@ export default function Home() {
             <>
               <div className="stepRow">
                 <span>1</span>
-                <div>
-                  <h2>What job do you want?</h2>
-                  <p>Example: Office Administrator</p>
-                </div>
-              </div>
 
-              <input
-                value={targetJob}
-                onChange={(e) => setTargetJob(e.target.value)}
-                placeholder="Job title"
-                style={{
-                  width: "100%",
-                  padding: "15px",
-                  borderRadius: "12px",
-                  marginBottom: "18px",
-                }}
-              />
-
-              <div className="stepRow">
-                <span>2</span>
                 <div>
-                  <h2>Your experience</h2>
-                  <p>Keep it simple — we&apos;ll do the writing</p>
+                  <h2>Tell us about yourself</h2>
+                  <p>
+                    Keep it simple. Write normally — we&apos;ll turn it into a
+                    professional CV.
+                  </p>
                 </div>
               </div>
 
               <textarea
-                rows={6}
-                value={experience}
-                onChange={(e) => setExperience(e.target.value)}
-                placeholder="Example: 3 years customer service, answering emails, planning appointments..."
+                rows={9}
+                value={aboutMe}
+                onChange={(e) => setAboutMe(e.target.value)}
+                placeholder={`Example:
+
+Steigerbouw
+2 jaar ervaring
+VCA
+Rijbewijs B
+English and Bulgarian
+Amsterdam
+
+You can write as little or as much as you want.`}
               />
 
-              <div className="stepRow">
-                <span>3</span>
-                <div>
-                  <h2>Skills</h2>
-                  <p>What are you good at?</p>
-                </div>
-              </div>
-
-              <textarea
-                rows={3}
-                value={skills}
-                onChange={(e) => setSkills(e.target.value)}
-                placeholder="Excel, customer service, planning, sales..."
-              />
-
-              <div className="stepRow">
-                <span>4</span>
-                <div>
-                  <h2>Education</h2>
-                </div>
-              </div>
-
-              <input
-                value={education}
-                onChange={(e) => setEducation(e.target.value)}
-                placeholder="School, diploma or qualification"
+              <div
                 style={{
-                  width: "100%",
-                  padding: "15px",
-                  borderRadius: "12px",
-                  marginBottom: "18px",
+                  marginTop: "22px",
+                  marginBottom: "12px",
                 }}
-              />
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "15px",
+                  }}
+                >
+                  Contact details
+                </h3>
 
-              <div className="stepRow">
-                <span>5</span>
-                <div>
-                  <h2>Languages & location</h2>
-                </div>
+                <p
+                  style={{
+                    margin: "5px 0 0",
+                    opacity: 0.55,
+                    fontSize: "13px",
+                  }}
+                >
+                  Optional — add them if you want them included in your CV.
+                </p>
               </div>
 
               <input
-                value={languages}
-                onChange={(e) => setLanguages(e.target.value)}
-                placeholder="English, Dutch..."
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Full name"
                 style={{
                   width: "100%",
                   padding: "15px",
@@ -309,9 +313,23 @@ export default function Home() {
               />
 
               <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Amsterdam, Netherlands"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                style={{
+                  width: "100%",
+                  padding: "15px",
+                  borderRadius: "12px",
+                  marginBottom: "10px",
+                }}
+              />
+
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone number"
                 style={{
                   width: "100%",
                   padding: "15px",
@@ -328,7 +346,9 @@ export default function Home() {
             disabled={loading}
           >
             {loading
-              ? "Creating your CV..."
+              ? mode === "tailor"
+                ? "Tailoring your CV..."
+                : "Building your CV..."
               : mode === "tailor"
               ? "Tailor My CV"
               : "Build My CV"}
@@ -347,17 +367,35 @@ export default function Home() {
           )}
         </section>
 
+        {/* RESULT */}
         {result && (
-          <section className="previewSection">
+          <section
+            className="previewSection"
+            ref={resultRef}
+            style={{
+              scrollMarginTop: "30px",
+            }}
+          >
             <div className="sectionHeader">
               <p className="eyebrow">YOUR PREVIEW</p>
               <h2>Your CV is ready</h2>
+
+              <p
+                style={{
+                  marginTop: "7px",
+                  opacity: 0.6,
+                }}
+              >
+                Here&apos;s a preview of your result.
+              </p>
             </div>
 
             <div className="previewGrid">
               <div className="previewItem scoreItem">
                 <span>
-                  {mode === "tailor" ? "Match score" : "CV score"}
+                  {mode === "tailor"
+                    ? "Match score"
+                    : "Profile strength"}
                 </span>
 
                 <strong>
@@ -374,9 +412,15 @@ export default function Home() {
                 </h3>
 
                 <div className="chips">
-                  {result.missingKeywords?.slice(0, 3).map((keyword) => (
-                    <span key={keyword}>{keyword}</span>
-                  ))}
+                  {result.missingKeywords?.length ? (
+                    result.missingKeywords
+                      .slice(0, 3)
+                      .map((keyword) => (
+                        <span key={keyword}>{keyword}</span>
+                      ))
+                  ) : (
+                    <span className="muted">No suggestions yet</span>
+                  )}
                 </div>
               </div>
 
@@ -393,7 +437,9 @@ export default function Home() {
 
                   <strong>Unlock your full CV</strong>
 
-                  <p>Full CV + cover letter + 10 applications</p>
+                  <p>
+                    Full CV + cover letter + 10 applications
+                  </p>
 
                   <button className="unlockButton">
                     Unlock for €6.99
@@ -425,6 +471,7 @@ export default function Home() {
           </section>
         )}
 
+        {/* WHAT YOU'LL GET */}
         <section
           style={{
             maxWidth: "720px",
@@ -473,7 +520,8 @@ export default function Home() {
                 border: "1px solid rgba(255,255,255,.07)",
               }}
             >
-              <strong>Tailored CV</strong>
+              <strong>Professional CV</strong>
+
               <p
                 style={{
                   margin: "6px 0 0",
@@ -481,8 +529,8 @@ export default function Home() {
                   lineHeight: 1.45,
                 }}
               >
-                Better summary, stronger wording, cleaner structure and
-                experience matched to the role.
+                Clean structure, stronger wording and your real experience
+                presented professionally.
               </p>
             </div>
 
@@ -495,6 +543,7 @@ export default function Home() {
               }}
             >
               <strong>Cover letter</strong>
+
               <p
                 style={{
                   margin: "6px 0 0",
@@ -502,8 +551,7 @@ export default function Home() {
                   lineHeight: 1.45,
                 }}
               >
-                A professional cover letter written specifically for the job
-                you&apos;re applying to.
+                A professional cover letter ready for your application.
               </p>
             </div>
 
@@ -515,7 +563,8 @@ export default function Home() {
                 border: "1px solid rgba(255,255,255,.07)",
               }}
             >
-              <strong>Match insights</strong>
+              <strong>Application insights</strong>
+
               <p
                 style={{
                   margin: "6px 0 0",
@@ -523,7 +572,7 @@ export default function Home() {
                   lineHeight: 1.45,
                 }}
               >
-                See your match score and important keywords before you apply.
+                See useful keywords and how strong your CV is before applying.
               </p>
             </div>
           </div>
@@ -542,6 +591,7 @@ export default function Home() {
           >
             <div>
               <strong>10 full applications</strong>
+
               <p
                 style={{
                   margin: "4px 0 0",
@@ -553,12 +603,16 @@ export default function Home() {
               </p>
             </div>
 
-            <strong style={{ fontSize: "22px" }}>€6.99</strong>
+            <strong style={{ fontSize: "22px" }}>
+              €6.99
+            </strong>
           </div>
         </section>
       </section>
 
-      <footer>ApplyFast · Simple, truthful CV creation</footer>
+      <footer>
+        ApplyFast · Simple, truthful CV creation
+      </footer>
     </main>
   );
 }
