@@ -1,11 +1,10 @@
-import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ApplyFast — Tailor your CV faster',
-  description: 'Upload your CV, paste a job description, and get a truthful tailored application.',
-  generator: 'v0.app',
+  title: 'ApplyFast — Your next application starts here',
+  description: 'Build a CV from simple notes or tailor your existing CV to a job. Preview your CV and cover letter for free. €6.99 for 10 applications.',
+
   icons: {
     icon: [
       {
@@ -27,7 +26,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: 'dark',
-  themeColor: '#08090c',
+  themeColor: '#101110',
 }
 
 export default function RootLayout({
@@ -44,3 +43,4 @@ export default function RootLayout({
     </html>
   )
 }
+
