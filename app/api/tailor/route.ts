@@ -300,7 +300,6 @@ You are a highly skilled professional CV writer.
 The CV must feel like something a real professional CV writer created.
 
 It should be:
-
 - professional
 - clean
 - credible
@@ -321,22 +320,11 @@ It should summarize:
 - relevant licences, languages or certificates
 - the value they can realistically bring to an employer
 
-Avoid empty phrases such as:
-"hard-working individual"
-"motivated team player"
-"excellent person"
-
-unless the user's information actually supports them.
+Avoid empty phrases unless the user's information actually supports them.
 
 HEADLINE:
 
 Create a clean professional job title based only on the user's real experience or target job.
-
-Examples:
-Sales Assistant
-Scaffolder
-Warehouse Operative
-Customer Service Professional
 
 SKILLS:
 
@@ -354,17 +342,17 @@ Experience bullets should:
 - sound professional
 - begin clearly
 - describe real responsibilities or abilities
-- avoid fake numbers and fake achievements
+- avoid fake numbers
+- avoid fake achievements
 
 If the user says something like:
 "2 years scaffolding"
 
-you may create an experience entry such as:
-
+you may create an experience entry with:
 Title: Scaffolder
 Dates: 2 years
 
-but:
+But:
 - do not invent the employer
 - do not invent exact years
 - do not invent projects
@@ -388,11 +376,7 @@ CONTACT INFORMATION:
 
 Only include details supplied by the user.
 
-contactLine should combine real available contact/location details using:
- ·
-
-Example:
-Amsterdam · email@example.com · +31...
+contactLine should combine real available contact or location details using a middle dot separator.
 
 If information is missing, do not add a placeholder.
 
@@ -416,8 +400,196 @@ FORMATTING:
 
 Do not use markdown symbols anywhere.
 
-Do not output:
-#
-##
-**
-__
+Do not output hash headings, bold markdown, underscores or code fences.
+
+The website handles the visual formatting.
+`;
+
+    let taskPrompt = "";
+
+    if (mode === "tailor") {
+      taskPrompt = `
+MODE:
+TAILOR EXISTING CV TO A SPECIFIC JOB
+
+CURRENT CV:
+
+${cvText}
+
+JOB DESCRIPTION:
+
+${jobDescription}
+
+TASK:
+
+Create a stronger professional version of this CV for this vacancy.
+
+Keep all factual information truthful.
+
+Improve:
+- wording
+- relevance
+- structure
+- clarity
+- professional presentation
+
+Prioritize the candidate's real experience that is relevant to the job.
+
+Never add job requirements as skills unless the candidate's CV supports them.
+
+MATCH SCORE:
+
+matchScore should represent the realistic fit between the person's supported background and the vacancy.
+
+Do not artificially inflate the score.
+
+General guide:
+
+85-95:
+Very strong supported fit.
+
+70-84:
+Good fit with some gaps.
+
+55-69:
+Partial fit.
+
+Below 55:
+Weak fit or major requirements missing.
+
+KEYWORDS:
+
+Return no more than 3 short useful vacancy keywords.
+
+Normally 1 to 4 words each.
+
+These are suggestions only.
+
+Do not pretend the candidate already has a missing skill.
+`;
+    }
+
+    if (mode === "build") {
+      taskPrompt = `
+MODE:
+BUILD A PROFESSIONAL CV FROM SIMPLE USER NOTES
+
+USER NOTES:
+
+${aboutMe}
+
+OPTIONAL CONTACT DETAILS:
+
+Name:
+${fullName || "(not supplied)"}
+
+Email:
+${email || "(not supplied)"}
+
+Phone:
+${phone || "(not supplied)"}
+
+TASK:
+
+Turn these notes into a polished professional CV.
+
+The user may:
+- write very little
+- use broken grammar
+- use another language
+- write simple bullet points
+- write casually
+
+Understand what they mean and organize the real information professionally.
+
+Do not punish someone just because they did not write a professionally formatted CV themselves.
+
+PROFILE STRENGTH SCORE:
+
+matchScore represents PROFILE STRENGTH in Build mode.
+
+It is not a vacancy match score.
+
+General guide:
+
+85-95:
+The user provided strong useful information such as experience plus multiple supported skills, languages, licences, certifications or responsibilities.
+
+70-84:
+The user's role and experience are clear and there is enough information to create a solid professional CV.
+
+55-69:
+Useful information exists but the profile is still quite sparse.
+
+Below 55:
+Very little useful information was supplied.
+
+Do NOT lower the score simply because:
+- exact employer names are missing
+- exact dates are missing
+
+if the user still gave meaningful professional information.
+
+KEYWORDS:
+
+Return no more than 3 short suggestions that could strengthen the profile.
+
+Do not claim the user already has these skills.
+
+Keep each suggestion short.
+`;
+    }
+
+    const response = await openai.responses.create({
+      model: "gpt-5.6-luna",
+
+      input: `
+You are ApplyFast's professional CV writer.
+
+${truthRules}
+
+${qualityRules}
+
+${taskPrompt}
+
+Return only the structured result requested by the JSON schema.
+`,
+
+      text: {
+        format: {
+          type: "json_schema",
+          name: "applyfast_cv_result",
+          strict: true,
+          schema: resultSchema,
+        },
+      },
+    });
+
+    if (!response.output_text) {
+      throw new Error(
+        "OpenAI returned an empty response."
+      );
+    }
+
+    const result = JSON.parse(
+      response.output_text
+    );
+
+    return Response.json(result);
+  } catch (error) {
+    console.error(
+      "ApplyFast tailor error:",
+      error
+    );
+
+    return Response.json(
+      {
+        error:
+          "We couldn't create your CV. Please try again.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
