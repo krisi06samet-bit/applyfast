@@ -4,50 +4,21 @@ import { useEffect, useRef, useState } from "react";
 
 type Mode = "tailor" | "build";
 
-type ExperienceItem = {
-  title: string;
-  organization: string;
-  dates: string;
-  location: string;
-  bullets: string[];
-};
-
-type EducationItem = {
-  qualification: string;
-  institution: string;
-  dates: string;
-};
-
-type CV = {
-  fullName: string;
-  contactLine: string;
-  headline: string;
-  profile: string;
-  skills: string[];
-  experience: ExperienceItem[];
-  education: EducationItem[];
-  certifications: string[];
-  languages: string[];
-  additional: string[];
-};
-
 type Result = {
-  matchScore: number;
-  keywords: string[];
-  cv: CV;
-  coverLetter: string;
+  matchScore?: number;
+  missingKeywords?: string[];
+  cvPreview?: string;
+  coverLetterPreview?: string;
 };
-
-function hasText(value?: string) {
-  return Boolean(value && value.trim());
-}
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("tailor");
 
+  // Tailor mode
   const [cvText, setCvText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
 
+  // Build mode
   const [aboutMe, setAboutMe] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -76,14 +47,18 @@ export default function Home() {
     setError("");
     setResult(null);
 
-    if (mode === "tailor" && (!cvText.trim() || !jobDescription.trim())) {
-      setError("Paste your CV and the job description first.");
-      return;
+    if (mode === "tailor") {
+      if (!cvText.trim() || !jobDescription.trim()) {
+        setError("Paste your CV and the job description first.");
+        return;
+      }
     }
 
-    if (mode === "build" && !aboutMe.trim()) {
-      setError("Tell us a little about yourself first.");
-      return;
+    if (mode === "build") {
+      if (!aboutMe.trim()) {
+        setError("Tell us a little about yourself first.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -96,8 +71,12 @@ export default function Home() {
         },
         body: JSON.stringify({
           mode,
+
+          // Tailor
           cvText,
           jobDescription,
+
+          // Build
           aboutMe,
           fullName,
           email,
@@ -105,20 +84,33 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const rawBody = await response.text();
+
+      let payload: Result & { error?: string } = {};
+
+      if (rawBody.trim()) {
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          throw new Error(
+            "We couldn't process your request. Please try again."
+          );
+        }
+      }
 
       if (!response.ok) {
         throw new Error(
-          data?.error || "We couldn't create your CV. Please try again."
+          payload.error ||
+            "We couldn't process your request. Please try again."
         );
       }
 
-      setResult(data);
+      setResult(payload);
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "We couldn't create your CV. Please try again."
+          : "We couldn't process your request. Please try again."
       );
     } finally {
       setLoading(false);
@@ -137,54 +129,79 @@ export default function Home() {
 
       <header className="navBar">
         <a className="wordmark" href="#top">
-          <span className="wordmarkMark">A</span>
-          ApplyFast
+          <span className="wordmarkMark">A</span> ApplyFast
         </a>
 
         <span className="pricePill">
-          Full result unlocked for testing
+          10 applications — €6.99 one-time
         </span>
       </header>
 
       <section className="toolPage" id="top">
         <div className="intro">
-          <p className="eyebrow">APPLY WITH A STRONGER CV</p>
-
           <h1>Make your CV fit the job</h1>
 
           <p className="introCopy">
-            Already have a CV? Tailor it. Don&apos;t have one? Build one from
-            simple notes in minutes.
+            Already have a CV? Tailor it. Don&apos;t have one? Build one in
+            minutes.
           </p>
         </div>
 
-        <div className="modeSelector">
+        {/* MODE SELECTOR */}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginBottom: "18px",
+            maxWidth: "720px",
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
           <button
             type="button"
-            className={mode === "tailor" ? "modeButton active" : "modeButton"}
             onClick={() => switchMode("tailor")}
+            style={{
+              flex: 1,
+              padding: "14px",
+              borderRadius: "14px",
+              border:
+                mode === "tailor"
+                  ? "1px solid #d4b483"
+                  : "1px solid rgba(255,255,255,.12)",
+              background:
+                mode === "tailor"
+                  ? "rgba(212,180,131,.14)"
+                  : "rgba(255,255,255,.04)",
+              color: "white",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
           >
-            <span className="modeTitle">
-              I already have a CV
-            </span>
-
-            <span className="modeCopy">
-              Tailor it to a specific job
-            </span>
+            I already have a CV
           </button>
 
           <button
             type="button"
-            className={mode === "build" ? "modeButton active" : "modeButton"}
             onClick={() => switchMode("build")}
+            style={{
+              flex: 1,
+              padding: "14px",
+              borderRadius: "14px",
+              border:
+                mode === "build"
+                  ? "1px solid #d4b483"
+                  : "1px solid rgba(255,255,255,.12)",
+              background:
+                mode === "build"
+                  ? "rgba(212,180,131,.14)"
+                  : "rgba(255,255,255,.04)",
+              color: "white",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
           >
-            <span className="modeTitle">
-              Build my CV
-            </span>
-
-            <span className="modeCopy">
-              Turn simple notes into a professional CV
-            </span>
+            Build my CV
           </button>
         </div>
 
@@ -196,7 +213,7 @@ export default function Home() {
 
                 <div>
                   <h2>Paste your current CV</h2>
-                  <p>Copy and paste the text from your CV.</p>
+                  <p>Copy and paste the text from your CV</p>
                 </div>
               </div>
 
@@ -221,7 +238,7 @@ Manchester`}
 
                 <div>
                   <h2>Paste the job description</h2>
-                  <p>Paste the vacancy you want to apply for.</p>
+                  <p>Paste the job you want to apply for</p>
                 </div>
               </div>
 
@@ -241,8 +258,8 @@ Manchester`}
                   <h2>Tell us about yourself</h2>
 
                   <p>
-                    Write normally. Short notes are fine — ApplyFast will
-                    organize them professionally.
+                    Keep it simple. Write normally — we&apos;ll turn it into a
+                    professional CV.
                   </p>
                 </div>
               </div>
@@ -264,38 +281,69 @@ Manchester
 You can write as little or as much as you want.`}
               />
 
-              <div className="contactHeading">
-                <div>
-                  <h3>Contact details</h3>
+              <div
+                style={{
+                  marginTop: "22px",
+                  marginBottom: "12px",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "15px",
+                  }}
+                >
+                  Contact details
+                </h3>
 
-                  <p>
-                    Optional — only add what you want included in your CV.
-                  </p>
-                </div>
+                <p
+                  style={{
+                    margin: "5px 0 0",
+                    opacity: 0.55,
+                    fontSize: "13px",
+                  }}
+                >
+                  Optional — add them if you want them included in your CV.
+                </p>
               </div>
 
-              <div className="contactGrid">
-                <input
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Full name"
-                />
+              <input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Full name"
+                style={{
+                  width: "100%",
+                  padding: "15px",
+                  borderRadius: "12px",
+                  marginBottom: "10px",
+                }}
+              />
 
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email"
-                />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                style={{
+                  width: "100%",
+                  padding: "15px",
+                  borderRadius: "12px",
+                  marginBottom: "10px",
+                }}
+              />
 
-                <input
-                  className="fullInput"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Phone number"
-                />
-              </div>
+              <input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Phone number"
+                style={{
+                  width: "100%",
+                  padding: "15px",
+                  borderRadius: "12px",
+                  marginBottom: "18px",
+                }}
+              />
             </>
           )}
 
@@ -304,6 +352,25 @@ You can write as little or as much as you want.`}
             className="generateButton"
             onClick={generate}
             disabled={loading}
+            style={{
+              width: "100%",
+              minHeight: "54px",
+              borderRadius: "12px",
+              border: "1px solid #e5ca94",
+              background:
+                "linear-gradient(110deg, #e4ca93, #c9aa70)",
+              color: "#191a14",
+              fontWeight: 700,
+              fontSize: "15px",
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: "10px",
+              padding: "14px 18px",
+              marginTop: "4px",
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.7 : 1,
+            }}
           >
             {loading
               ? mode === "tailor"
@@ -313,12 +380,11 @@ You can write as little or as much as you want.`}
               ? "Tailor My CV"
               : "Build My CV"}
 
-            <span aria-hidden="true">→</span>
+            <span>→</span>
           </button>
 
           <p className="truthNote">
-            We improve presentation and wording — we never invent your
-            experience or qualifications.
+            We never invent experience, skills or qualifications.
           </p>
 
           {error && (
@@ -328,62 +394,57 @@ You can write as little or as much as you want.`}
           )}
         </section>
 
+        {/* FULL RESULT — TEMPORARY TEST MODE */}
         {result && (
           <section
-            className="resultSection"
+            className="previewSection"
             ref={resultRef}
+            style={{
+              scrollMarginTop: "30px",
+            }}
           >
-            <div className="resultHeading">
-              <div>
-                <p className="eyebrow">
-                  FULL RESULT · TEST MODE
-                </p>
+            <div className="sectionHeader">
+              <p className="eyebrow">
+                FULL RESULT · TEST MODE
+              </p>
 
-                <h2>Your application is ready</h2>
+              <h2>Your CV is ready</h2>
 
-                <p>
-                  The full CV and cover letter are visible while we test
-                  quality.
-                </p>
-              </div>
-
-              <span className="readyBadge">
-                Full result unlocked
-              </span>
+              <p
+                style={{
+                  marginTop: "7px",
+                  opacity: 0.6,
+                }}
+              >
+                Full CV and cover letter are visible while we test the final
+                quality.
+              </p>
             </div>
 
-            <div className="insights">
-              <div className="scoreBlock">
-                <div className="scoreNumber">
-                  {result.matchScore}
-                  <span>%</span>
-                </div>
+            <div className="previewGrid">
+              <div className="previewItem scoreItem">
+                <span>
+                  {mode === "tailor"
+                    ? "Match score"
+                    : "Profile strength"}
+                </span>
 
-                <div>
-                  <h3>
-                    {mode === "tailor"
-                      ? "Match score"
-                      : "Profile strength"}
-                  </h3>
-
-                  <p>
-                    {mode === "tailor"
-                      ? "Based only on the experience supported by your CV."
-                      : "Based on how complete and useful your supplied information is."}
-                  </p>
-                </div>
+                <strong>
+                  {result.matchScore ?? "—"}
+                  <small>%</small>
+                </strong>
               </div>
 
-              <div className="keywordsBlock">
+              <div className="previewItem">
                 <h3>
                   {mode === "tailor"
-                    ? "Useful job keywords"
-                    : "Ways to strengthen the profile"}
+                    ? "Missing keywords"
+                    : "Recommended keywords"}
                 </h3>
 
                 <div className="chips">
-                  {result.keywords?.length ? (
-                    result.keywords
+                  {result.missingKeywords?.length ? (
+                    result.missingKeywords
                       .slice(0, 3)
                       .map((keyword) => (
                         <span key={keyword}>
@@ -392,254 +453,180 @@ You can write as little or as much as you want.`}
                       ))
                   ) : (
                     <span className="muted">
-                      No extra suggestions needed
+                      No suggestions yet
                     </span>
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="documentStack">
-              <article className="cvPaper">
-                <div className="cvTop">
-                  <div>
-                    {hasText(result.cv.fullName) && (
-                      <h2>
-                        {result.cv.fullName}
-                      </h2>
-                    )}
+              <div className="previewItem documentItem">
+                <h3>Full CV</h3>
 
-                    {hasText(result.cv.headline) && (
-                      <p className="cvHeadline">
-                        {result.cv.headline}
-                      </p>
-                    )}
-                  </div>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {result.cvPreview ||
+                    "Your CV will appear here."}
+                </pre>
+              </div>
 
-                  {hasText(result.cv.contactLine) && (
-                    <p className="contactLine">
-                      {result.cv.contactLine}
-                    </p>
-                  )}
-                </div>
+              <div className="previewItem documentItem">
+                <h3>Full cover letter</h3>
 
-                {hasText(result.cv.profile) && (
-                  <section className="cvSection">
-                    <h3>Professional Profile</h3>
-
-                    <p>
-                      {result.cv.profile}
-                    </p>
-                  </section>
-                )}
-
-                {result.cv.skills?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>Core Skills</h3>
-
-                    <div className="skillGrid">
-                      {result.cv.skills.map((skill) => (
-                        <span key={skill}>
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {result.cv.experience?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>Experience</h3>
-
-                    <div className="entryList">
-                      {result.cv.experience.map(
-                        (item, index) => (
-                          <div
-                            className="cvEntry"
-                            key={`${item.title}-${index}`}
-                          >
-                            <div className="entryHeader">
-                              <div>
-                                {hasText(item.title) && (
-                                  <h4>
-                                    {item.title}
-                                  </h4>
-                                )}
-
-                                {hasText(item.organization) && (
-                                  <p>
-                                    {item.organization}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="entryMeta">
-                                {hasText(item.dates) && (
-                                  <span>
-                                    {item.dates}
-                                  </span>
-                                )}
-
-                                {hasText(item.location) && (
-                                  <span>
-                                    {item.location}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {item.bullets?.length > 0 && (
-                              <ul>
-                                {item.bullets.map(
-                                  (bullet, bulletIndex) => (
-                                    <li key={bulletIndex}>
-                                      {bullet}
-                                    </li>
-                                  )
-                                )}
-                              </ul>
-                            )}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </section>
-                )}
-
-                {result.cv.education?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>Education</h3>
-
-                    <div className="entryList">
-                      {result.cv.education.map(
-                        (item, index) => (
-                          <div
-                            className="cvEntry compactEntry"
-                            key={`${item.qualification}-${index}`}
-                          >
-                            <div>
-                              {hasText(item.qualification) && (
-                                <h4>
-                                  {item.qualification}
-                                </h4>
-                              )}
-
-                              {hasText(item.institution) && (
-                                <p>
-                                  {item.institution}
-                                </p>
-                              )}
-                            </div>
-
-                            {hasText(item.dates) && (
-                              <div className="entryMeta">
-                                <span>
-                                  {item.dates}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      )}
-                    </div>
-                  </section>
-                )}
-
-                {result.cv.certifications?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>
-                      Certifications & Licences
-                    </h3>
-
-                    <ul className="simpleList">
-                      {result.cv.certifications.map(
-                        (item) => (
-                          <li key={item}>
-                            {item}
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  </section>
-                )}
-
-                {result.cv.languages?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>Languages</h3>
-
-                    <p>
-                      {result.cv.languages.join(" · ")}
-                    </p>
-                  </section>
-                )}
-
-                {result.cv.additional?.length > 0 && (
-                  <section className="cvSection">
-                    <h3>
-                      Additional Information
-                    </h3>
-
-                    <ul className="simpleList">
-                      {result.cv.additional.map(
-                        (item) => (
-                          <li key={item}>
-                            {item}
-                          </li>
-                        )
-                      )}
-                    </ul>
-                  </section>
-                )}
-              </article>
-
-              <article className="letterPaper">
-                <div className="letterTop">
-                  <div>
-                    <p className="eyebrow">
-                      COVER LETTER
-                    </p>
-
-                    <h2>Ready to use</h2>
-                  </div>
-                </div>
-
-                <div className="letterText">
-                  {result.coverLetter
-                    .split(/\n{2,}/)
-                    .filter(Boolean)
-                    .map((paragraph, index) => (
-                      <p key={index}>
-                        {paragraph.trim()}
-                      </p>
-                    ))}
-                </div>
-              </article>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {result.coverLetterPreview ||
+                    "Your cover letter will appear here."}
+                </pre>
+              </div>
             </div>
           </section>
         )}
 
-        <section className="offerSection">
-          <div>
+        {/* WHAT YOU'LL GET */}
+        <section
+          style={{
+            maxWidth: "720px",
+            margin: "36px auto 0",
+            padding: "24px",
+            borderRadius: "20px",
+            border: "1px solid rgba(255,255,255,.1)",
+            background: "rgba(255,255,255,.035)",
+          }}
+        >
+          <div style={{ marginBottom: "20px" }}>
             <p className="eyebrow">
-              LAUNCH OFFER
+              WHAT YOU&apos;LL GET
             </p>
 
-            <h2>
-              10 full applications for €6.99
+            <h2
+              style={{
+                margin: "6px 0 8px",
+                fontSize: "24px",
+              }}
+            >
+              Everything you need to apply
             </h2>
 
-            <p>
-              The payment wall is temporarily disabled while we test the final
-              CV quality.
+            <p
+              style={{
+                opacity: 0.7,
+                margin: 0,
+                lineHeight: 1.5,
+              }}
+            >
+              A complete application package built around your real
+              experience.
             </p>
           </div>
 
-          <div className="offerPrice">
-            <strong>€6.99</strong>
+          <div
+            style={{
+              display: "grid",
+              gap: "12px",
+            }}
+          >
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Professional CV</strong>
 
-            <span>
-              one-time · no subscription
-            </span>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                Clean structure, stronger wording and your real experience
+                presented professionally.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Cover letter</strong>
+
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                A professional cover letter ready for your application.
+              </p>
+            </div>
+
+            <div
+              style={{
+                padding: "16px",
+                borderRadius: "14px",
+                background: "rgba(255,255,255,.04)",
+                border: "1px solid rgba(255,255,255,.07)",
+              }}
+            >
+              <strong>Application insights</strong>
+
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  opacity: 0.65,
+                  lineHeight: 1.45,
+                }}
+              >
+                See useful keywords and how strong your CV is before applying.
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "18px",
+              paddingTop: "18px",
+              borderTop: "1px solid rgba(255,255,255,.08)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "16px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <strong>10 full applications</strong>
+
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  opacity: 0.6,
+                  fontSize: "14px",
+                }}
+              >
+                One payment. No subscription.
+              </p>
+            </div>
+
+            <strong style={{ fontSize: "22px" }}>
+              €6.99
+            </strong>
           </div>
         </section>
       </section>
