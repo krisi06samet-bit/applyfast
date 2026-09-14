@@ -1,423 +1,850 @@
-import OpenAI from "openai";
-
-export const runtime = "nodejs";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-type Mode = "tailor" | "build";
-
-type RequestBody = {
-  mode?: Mode;
-  cvText?: string;
-  jobDescription?: string;
-  aboutMe?: string;
-  fullName?: string;
-  email?: string;
-  phone?: string;
-};
-
-const resultSchema = {
-  type: "object",
-  additionalProperties: false,
-
-  properties: {
-    matchScore: {
-      type: "number",
-      minimum: 0,
-      maximum: 100,
-    },
-
-    keywords: {
-      type: "array",
-      maxItems: 3,
-      items: {
-        type: "string",
-      },
-    },
-
-    cv: {
-      type: "object",
-      additionalProperties: false,
-
-      properties: {
-        fullName: {
-          type: "string",
-        },
-
-        contactLine: {
-          type: "string",
-        },
-
-        headline: {
-          type: "string",
-        },
-
-        profile: {
-          type: "string",
-        },
-
-        skills: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        experience: {
-          type: "array",
-
-          items: {
-            type: "object",
-            additionalProperties: false,
-
-            properties: {
-              title: {
-                type: "string",
-              },
-
-              organization: {
-                type: "string",
-              },
-
-              dates: {
-                type: "string",
-              },
-
-              location: {
-                type: "string",
-              },
-
-              bullets: {
-                type: "array",
-                items: {
-                  type: "string",
-                },
-              },
-            },
-
-            required: [
-              "title",
-              "organization",
-              "dates",
-              "location",
-              "bullets",
-            ],
-          },
-        },
-
-        education: {
-          type: "array",
-
-          items: {
-            type: "object",
-            additionalProperties: false,
-
-            properties: {
-              qualification: {
-                type: "string",
-              },
-
-              institution: {
-                type: "string",
-              },
-
-              dates: {
-                type: "string",
-              },
-            },
-
-            required: [
-              "qualification",
-              "institution",
-              "dates",
-            ],
-          },
-        },
-
-        certifications: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        languages: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-
-        additional: {
-          type: "array",
-          items: {
-            type: "string",
-          },
-        },
-      },
-
-      required: [
-        "fullName",
-        "contactLine",
-        "headline",
-        "profile",
-        "skills",
-        "experience",
-        "education",
-        "certifications",
-        "languages",
-        "additional",
-      ],
-    },
-
-    coverLetter: {
-      type: "string",
-    },
-  },
-
-  required: [
-    "matchScore",
-    "keywords",
-    "cv",
-    "coverLetter",
-  ],
-};
-
-function clean(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
+:root {
+  --bg: #0c1117;
+  --panel: #131a23;
+  --panel-soft: #18212c;
+  --text: #f4f6f8;
+  --muted: #98a4b1;
+  --line: rgba(255, 255, 255, 0.09);
+  --gold: #d8bd83;
+  --gold-strong: #e4c98f;
+  --gold-soft: rgba(216, 189, 131, 0.12);
+  --danger: #ff9d9d;
 }
 
-export async function POST(request: Request) {
-  try {
-    if (!process.env.OPENAI_API_KEY) {
-      return Response.json(
-        {
-          error: "AI is not configured.",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+* {
+  box-sizing: border-box;
+}
 
-    const body = (await request.json()) as RequestBody;
+html {
+  background: var(--bg);
+  scroll-behavior: smooth;
+}
 
-    const mode = body.mode;
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(
+      circle at 80% 5%,
+      rgba(216, 189, 131, 0.07),
+      transparent 28%
+    ),
+    linear-gradient(180deg, #0b1016 0%, #0d1219 100%);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
 
-    const cvText = clean(body.cvText);
-    const jobDescription = clean(body.jobDescription);
+button,
+input,
+textarea {
+  font: inherit;
+}
 
-    const aboutMe = clean(body.aboutMe);
-    const fullName = clean(body.fullName);
-    const email = clean(body.email);
-    const phone = clean(body.phone);
+button {
+  cursor: pointer;
+}
 
-    if (mode !== "tailor" && mode !== "build") {
-      return Response.json(
-        {
-          error: "Invalid mode.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+button:disabled {
+  cursor: not-allowed;
+}
 
-    if (
-      mode === "tailor" &&
-      (!cvText || !jobDescription)
-    ) {
-      return Response.json(
-        {
-          error:
-            "Paste your CV and the job description first.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-    if (
-      mode === "build" &&
-      !aboutMe
-    ) {
-      return Response.json(
-        {
-          error:
-            "Tell us a little about yourself first.",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+h1,
+h2,
+h3,
+h4,
+p {
+  margin-top: 0;
+}
 
-    const truthRules = `
-TRUTH RULES:
+.appShell {
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
 
-- Never invent facts.
-- Never invent an employer or company.
-- Never invent school or education.
-- Never invent dates.
-- Never invent exact years.
-- Never invent qualifications.
-- Never invent certificates.
-- Never invent licences.
-- Never invent languages.
-- Never invent achievements.
-- Never invent software knowledge.
-- Never invent tools or machines.
-- Never invent responsibilities that are not supported by the user's information.
-- Never invent locations.
+.organicBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 14% 8%,
+      rgba(60, 92, 135, 0.08),
+      transparent 24%
+    ),
+    radial-gradient(
+      circle at 85% 23%,
+      rgba(216, 189, 131, 0.05),
+      transparent 22%
+    );
+}
 
-If information is missing, simply omit it.
+.navBar {
+  width: min(1080px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 22px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+}
 
-Do not use fake placeholders such as:
-[COMPANY NAME]
-[DATE]
-[YOUR NAME]
-[ADDRESS]
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 760;
+  font-size: 22px;
+  letter-spacing: -0.6px;
+}
 
-You may:
-- correct grammar
-- translate simple notes into professional English
-- organize information
-- improve wording
-- make the CV clearer
-- make supported experience sound more professional
+.wordmarkMark {
+  width: 34px;
+  height: 34px;
+  margin-right: 10px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: #19170f;
+  background: linear-gradient(145deg, #ead29f, #c9a868);
+  font-weight: 850;
+}
 
-Everything must remain truthful and defendable in a real job interview.
-`;
+.pricePill {
+  padding: 8px 12px;
+  border: 1px solid rgba(216, 189, 131, 0.25);
+  border-radius: 999px;
+  background: rgba(216, 189, 131, 0.07);
+  color: #dec99f;
+  font-size: 12px;
+  white-space: nowrap;
+}
 
-    const qualityRules = `
-CV QUALITY RULES:
+.toolPage {
+  width: min(900px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 56px 0 74px;
+}
 
-You are a highly skilled professional CV writer.
+.intro {
+  max-width: 690px;
+  margin: 0 auto 28px;
+  text-align: center;
+}
 
-The CV must feel like something a real professional CV writer created.
+.eyebrow {
+  margin-bottom: 8px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
 
-It should be:
+.intro h1 {
+  margin-bottom: 13px;
+  font-size: clamp(38px, 6vw, 58px);
+  line-height: 1.04;
+  letter-spacing: -2.2px;
+}
 
-- professional
-- clean
-- credible
-- recruiter-friendly
-- ATS-friendly
-- concise
-- easy to scan
-- strong without sounding fake
+.introCopy {
+  max-width: 580px;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 17px;
+}
 
-PROFESSIONAL PROFILE:
+.modeSelector {
+  max-width: 720px;
+  margin: 0 auto 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 
-Write a polished professional profile of around 3 to 5 sentences when enough information exists.
+.modeButton {
+  min-height: 76px;
+  padding: 14px 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  text-align: left;
+  color: #dfe4e9;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
 
-It should summarize:
-- the person's actual field or role
-- real experience
-- strongest supported abilities
-- relevant licences, languages or certificates
-- the value they can realistically bring to an employer
+.modeButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(216, 189, 131, 0.25);
+}
 
-Avoid empty phrases such as:
-"hard-working individual"
-"motivated team player"
-"excellent person"
+.modeButton.active {
+  border-color: rgba(216, 189, 131, 0.7);
+  background: rgba(216, 189, 131, 0.1);
+}
 
-unless the user's information actually supports them.
+.modeTitle {
+  font-size: 14px;
+  font-weight: 750;
+}
 
-HEADLINE:
+.modeCopy {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
 
-Create a clean professional job title based only on the user's real experience or target job.
+.toolCard {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(23, 31, 42, 0.96),
+    rgba(16, 22, 30, 0.96)
+  );
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
 
-Examples:
-Sales Assistant
-Scaffolder
-Warehouse Operative
-Customer Service Professional
+.stepRow {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  margin-bottom: 13px;
+}
 
-SKILLS:
+.stepRow > span {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  display: grid;
+  place-items: center;
+  color: var(--gold);
+  background: var(--gold-soft);
+  border: 1px solid rgba(216, 189, 131, 0.3);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+}
 
-Use short recruiter-friendly skill names.
+.stepRow h2 {
+  margin-bottom: 3px;
+  font-size: 19px;
+  letter-spacing: -0.3px;
+}
 
-Normally return around 4 to 8 useful skills when the user's information supports them.
+.stepRow p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
 
-Do not invent a skill just because it would improve the CV.
+textarea,
+input {
+  width: 100%;
+  color: var(--text);
+  background: #0b1118;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
 
-EXPERIENCE:
+textarea {
+  min-height: 148px;
+  margin-bottom: 23px;
+  padding: 15px 16px;
+  resize: vertical;
+  line-height: 1.6;
+}
 
-Turn the user's real work information into professional experience entries.
+input {
+  min-height: 49px;
+  padding: 12px 14px;
+}
 
-Experience bullets should:
-- sound professional
-- begin clearly
-- describe real responsibilities or abilities
-- avoid fake numbers and fake achievements
+textarea::placeholder,
+input::placeholder {
+  color: #6d7885;
+}
 
-If the user says something like:
-"2 years scaffolding"
+textarea:focus,
+input:focus {
+  border-color: rgba(216, 189, 131, 0.72);
+  box-shadow: 0 0 0 3px rgba(216, 189, 131, 0.07);
+  background: #0e151e;
+}
 
-you may create an experience entry such as:
+.contactHeading {
+  margin: 3px 0 12px;
+}
 
-Title: Scaffolder
-Dates: 2 years
+.contactHeading h3 {
+  margin-bottom: 3px;
+  font-size: 14px;
+}
 
-but:
-- do not invent the employer
-- do not invent exact years
-- do not invent projects
-- do not invent management responsibilities
+.contactHeading p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 
-If the employer is unknown, organization must be an empty string.
+.contactGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
 
-EDUCATION:
+.fullInput {
+  grid-column: 1 / -1;
+}
 
-Only include education when the user actually supplied it.
+.generateButton {
+  width: 100%;
+  min-height: 54px;
+  padding: 13px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px solid #ead29e;
+  border-radius: 13px;
+  color: #17150f;
+  background: linear-gradient(120deg, #ead09a, #caa86a);
+  font-size: 15px;
+  font-weight: 800;
+  box-shadow: 0 10px 28px rgba(216, 189, 131, 0.12);
+  transition:
+    filter 0.15s ease,
+    transform 0.15s ease;
+}
 
-CERTIFICATIONS AND LICENCES:
+.generateButton:hover:not(:disabled) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
 
-Only include real supplied certifications and licences.
+.generateButton:disabled {
+  opacity: 0.68;
+}
 
-LANGUAGES:
+.truthNote {
+  margin: 11px 0 0;
+  color: #7f8b97;
+  text-align: center;
+  font-size: 11px;
+}
 
-Only include languages explicitly supplied by the user.
+.error {
+  margin-top: 15px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 120, 120, 0.24);
+  border-radius: 11px;
+  color: var(--danger);
+  background: rgba(255, 80, 80, 0.06);
+  font-size: 13px;
+}
 
-CONTACT INFORMATION:
+.resultSection {
+  max-width: 900px;
+  margin: 58px auto 0;
+  scroll-margin-top: 24px;
+}
 
-Only include details supplied by the user.
+.resultHeading {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+}
 
-contactLine should combine real available contact/location details using:
- ·
+.resultHeading h2 {
+  margin: 0 0 4px;
+  font-size: 31px;
+  letter-spacing: -1px;
+}
 
-Example:
-Amsterdam · email@example.com · +31...
+.resultHeading > div > p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
 
-If information is missing, do not add a placeholder.
+.readyBadge {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  color: #bad5a5;
+  background: rgba(126, 166, 91, 0.08);
+  border: 1px solid rgba(126, 166, 91, 0.28);
+  border-radius: 999px;
+  font-size: 11px;
+}
 
-COVER LETTER:
+.insights {
+  margin-bottom: 18px;
+  padding: 20px 22px;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(19, 26, 35, 0.88);
+}
 
-Write a professional natural cover letter.
+.scoreBlock {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+}
 
-It should normally contain around 4 to 6 short paragraphs.
+.scoreNumber {
+  color: var(--gold);
+  font-size: 45px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: -2px;
+}
 
-It should:
-- sound human
-- be confident but not exaggerated
-- use the candidate's real experience
-- avoid repeating the CV word-for-word
+.scoreNumber span {
+  margin-left: 2px;
+  color: #a9956d;
+  font-size: 15px;
+  letter-spacing: 0;
+}
 
-If there is a specific vacancy, tailor the letter to it.
+.insights h3 {
+  margin-bottom: 2px;
+  font-size: 13px;
+}
 
-If no company is known, never invent a company name.
+.insights p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
 
-FORMATTING:
+.keywordsBlock {
+  padding-left: 24px;
+  border-left: 1px solid var(--line);
+}
 
-Do not use markdown symbols anywhere.
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+}
 
-Do not output:
-#
-##
-**
-__
+.chips span {
+  max-width: 100%;
+  padding: 5px 9px;
+  color: #dfcba5;
+  background: rgba(216, 189, 131, 0.08);
+  border: 1px solid rgba(216, 189, 131, 0.2);
+  border-radius: 999px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.chips .muted {
+  color: var(--muted);
+  border-color: var(--line);
+  background: transparent;
+}
+
+.documentStack {
+  display: grid;
+  gap: 20px;
+}
+
+.cvPaper,
+.letterPaper {
+  color: #292d31;
+  background: #f7f6f1;
+  border-radius: 12px;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.24);
+}
+
+.cvPaper {
+  padding: 40px 46px 44px;
+  border-top: 4px solid #af9258;
+}
+
+.cvTop {
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid #d8d4c8;
+}
+
+.cvTop h2 {
+  margin-bottom: 3px;
+  color: #23272b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.8px;
+}
+
+.cvHeadline {
+  margin-bottom: 0;
+  color: #7f6738;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.contactLine {
+  max-width: 46%;
+  margin: 4px 0 0;
+  color: #666c6c;
+  font-size: 11px;
+  text-align: right;
+}
+
+.cvSection {
+  margin-top: 25px;
+}
+
+.cvSection > h3 {
+  margin-bottom: 10px;
+  color: #826b3e;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.cvSection > p {
+  margin-bottom: 0;
+  font-size: 13px;
+  line-height: 1.68;
+}
+
+.skillGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.skillGrid span {
+  padding: 5px 9px;
+  color: #44483f;
+  background: #eeece3;
+  border: 1px solid #ded8c8;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.entryList {
+  display: grid;
+  gap: 20px;
+}
+
+.cvEntry {
+  padding-bottom: 18px;
+  border-bottom: 1px solid #e0ddd3;
+}
+
+.cvEntry:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.entryHeader,
+.compactEntry {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.cvEntry h4 {
+  margin-bottom: 2px;
+  color: #272b2d;
+  font-size: 14px;
+}
+
+.cvEntry p {
+  margin-bottom: 0;
+  color: #696d6d;
+  font-size: 12px;
+}
+
+.entryMeta {
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: #7f817b;
+  font-size: 10px;
+  text-align: right;
+}
+
+.cvEntry ul,
+.simpleList {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+.cvEntry li,
+.simpleList li {
+  margin-bottom: 5px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.simpleList {
+  margin-top: 0;
+}
+
+.letterPaper {
+  padding: 34px 42px 38px;
+  border-top: 4px solid #5b6875;
+}
+
+.letterTop {
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #d8d4c8;
+}
+
+.letterTop h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 25px;
+  font-weight: 500;
+}
+
+.letterTop .eyebrow {
+  color: #7f6738;
+}
+
+.letterText p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.72;
+}
+
+.letterText p:last-child {
+  margin-bottom: 0;
+}
+
+.offerSection {
+  max-width: 900px;
+  margin: 28px auto 0;
+  padding: 22px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  border: 1px solid rgba(216, 189, 131, 0.16);
+  border-radius: 16px;
+  background: rgba(216, 189, 131, 0.045);
+}
+
+.offerSection h2 {
+  margin-bottom: 4px;
+  font-size: 20px;
+}
+
+.offerSection > div > p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.offerPrice {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.offerPrice strong {
+  color: var(--gold);
+  font-size: 26px;
+}
+
+.offerPrice span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+footer {
+  width: min(900px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 28px 0 34px;
+  border-top: 1px solid var(--line);
+  color: #687582;
+  text-align: center;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .navBar {
+    width: min(100% - 24px, 1080px);
+    padding: 16px 0;
+  }
+
+  .pricePill {
+    max-width: 168px;
+    white-space: normal;
+    text-align: right;
+    line-height: 1.3;
+  }
+
+  .toolPage {
+    width: min(100% - 24px, 900px);
+    padding-top: 38px;
+  }
+
+  .intro h1 {
+    font-size: 39px;
+    letter-spacing: -1.4px;
+  }
+
+  .introCopy {
+    font-size: 15px;
+  }
+
+  .modeSelector {
+    grid-template-columns: 1fr;
+  }
+
+  .toolCard {
+    padding: 20px;
+  }
+
+  .contactGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .fullInput {
+    grid-column: auto;
+  }
+
+  .resultSection {
+    margin-top: 45px;
+  }
+
+  .resultHeading {
+    align-items: flex-start;
+  }
+
+  .readyBadge {
+    display: none;
+  }
+
+  .insights {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .keywordsBlock {
+    padding: 17px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .cvPaper {
+    padding: 29px 24px 32px;
+  }
+
+  .cvTop {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .contactLine {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .cvTop h2 {
+    font-size: 27px;
+  }
+
+  .entryHeader,
+  .compactEntry {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .entryMeta {
+    min-width: 0;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .letterPaper {
+    padding: 28px 24px 30px;
+  }
+
+  .offerSection {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 460px) {
+  .wordmark {
+    font-size: 19px;
+  }
+
+  .wordmarkMark {
+    width: 31px;
+    height: 31px;
+  }
+
+  .intro h1 {
+    font-size: 35px;
+  }
+
+  .toolCard {
+    padding: 17px;
+  }
+
+  .offerSection {
+    flex-direction: column;
+  }
+
+  .offerPrice {
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  * {
+    transition: none !important;
+  }
+}
