@@ -24,6 +24,7 @@ export default function Home() {
 
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState("");
 
   const resultRef = useRef<HTMLElement | null>(null);
@@ -106,6 +107,32 @@ export default function Home() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function startCheckout() {
+    setCheckoutLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.url) {
+        throw new Error("Could not start checkout.");
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not start checkout."
+      );
+      setCheckoutLoading(false);
     }
   }
 
@@ -480,12 +507,16 @@ You can write as little or as much as you want.`}
 
               <button
                 className="unlockButton"
+                onClick={startCheckout}
+                disabled={checkoutLoading}
                 style={{
                   width: "100%",
                   maxWidth: "420px",
                 }}
               >
-                Unlock for €6.99
+                {checkoutLoading
+                  ? "Opening secure checkout..."
+                  : "Unlock for €6.99"}
               </button>
 
               <p
