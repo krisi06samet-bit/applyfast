@@ -32,6 +32,7 @@ type CvData = {
   documents: string[];
   certificates: string[];
   education: string[];
+  additionalInformation: string[];
 };
 
 type Result = {
@@ -41,15 +42,31 @@ type Result = {
   coverLetter?: string;
 };
 
+const placeholderValues = new Set([
+  "not provided",
+  "not specified",
+  "unknown",
+  "n/a",
+  "none",
+]);
+
+function cleanText(value?: string) {
+  const cleaned = typeof value === "string" ? value.trim() : "";
+
+  return placeholderValues.has(cleaned.toLowerCase())
+    ? ""
+    : cleaned;
+}
+
 function hasItems(items?: string[]) {
-  return Array.isArray(items) && items.some((item) => item.trim());
+  return cleanItems(items).length > 0;
 }
 
 function cleanItems(items?: string[]) {
   if (!Array.isArray(items)) return [];
 
   return items
-    .map((item) => item.trim())
+    .map((item) => cleanText(item))
     .filter(Boolean);
 }
 
@@ -185,10 +202,10 @@ export default function Home() {
   const cv = result?.cv;
 
   const displayedPhone =
-    cv?.contact?.phone || phone;
+    cleanText(cv?.contact?.phone) || cleanText(phone);
 
   const displayedEmail =
-    cv?.contact?.email || email;
+    cleanText(cv?.contact?.email) || cleanText(email);
 
   const drivingLicence =
     getDrivingLicenceItems(cv?.drivingLicence);
@@ -494,14 +511,14 @@ can start soon`}
               <div className="cvIdentity">
                 <div>
                   <h1>
-                    {cv.name ||
-                      fullName ||
+                    {cleanText(cv.name) ||
+                      cleanText(fullName) ||
                       "Professional CV"}
                   </h1>
 
-                  {cv.contact.location ? (
+                  {cleanText(cv.contact.location) ? (
                     <p className="cvLocation">
-                      {cv.contact.location}
+                      {cleanText(cv.contact.location)}
                     </p>
                   ) : (
                     <p className="cvLocation">
@@ -541,14 +558,14 @@ can start soon`}
               )}
 
               <div className="cvBody">
-                {cv.profile && (
+                {cleanText(cv.profile) && (
                   <section className="cvSection">
                     <h2>
                       Professional Profile
                     </h2>
 
                     <p className="cvParagraph">
-                      {cv.profile}
+                      {cleanText(cv.profile)}
                     </p>
                   </section>
                 )}
@@ -569,26 +586,26 @@ can start soon`}
                               marginBottom: "0.8rem",
                             }}
                           >
-                            {job.title && (
+                            {cleanText(job.title) && (
                               <p
                                 className="cvParagraph"
                                 style={{
                                   fontWeight: 700,
                                 }}
                               >
-                                {job.title}
+                                {cleanText(job.title)}
                               </p>
                             )}
 
-                            {job.employer && (
+                            {cleanText(job.employer) && (
                               <p className="cvParagraph">
-                                {job.employer}
+                                {cleanText(job.employer)}
                               </p>
                             )}
 
-                            {job.duration && (
+                            {cleanText(job.duration) && (
                               <p className="cvParagraph">
-                                {job.duration}
+                                {cleanText(job.duration)}
                               </p>
                             )}
 
@@ -725,6 +742,29 @@ can start soon`}
                     <div className="cvTextBlock">
                       {cleanItems(
                         cv.education
+                      ).map((item) => (
+                        <p
+                          className="cvParagraph"
+                          key={item}
+                        >
+                          {item}
+                        </p>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {hasItems(
+                  cv.additionalInformation
+                ) && (
+                  <section className="cvSection">
+                    <h2>
+                      Additional Information
+                    </h2>
+
+                    <div className="cvTextBlock">
+                      {cleanItems(
+                        cv.additionalInformation
                       ).map((item) => (
                         <p
                           className="cvParagraph"
