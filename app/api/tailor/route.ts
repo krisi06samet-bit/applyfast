@@ -18,54 +18,8 @@ type TailorRequest = {
   phone?: string;
 };
 
-type AiResult = {
-  matchScore: number;
-  missingKeywords: string[];
-  tailoredResume: string;
-  coverLetter: string;
-};
-
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function sanitizeCvText(text: string) {
-  if (!text) return "";
-
-  const stopMarkers = [
-    "Cover Letter",
-    "Recommended Improvements",
-    "Missing Keywords",
-    "Profile Strength",
-    "Match Score",
-    "Suggestions",
-    "Recommendations",
-  ];
-
-  let safe = text.trim();
-  let cutIndex = safe.length;
-
-  for (const marker of stopMarkers) {
-    const index = safe.toLowerCase().indexOf(marker.toLowerCase());
-
-    if (index !== -1 && index < cutIndex) {
-      cutIndex = index;
-    }
-  }
-
-  return safe
-    .slice(0, cutIndex)
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => {
-      const trimmed = line.trim();
-
-      if (!trimmed) return true;
-
-      return ![".", "•", "-", "·"].includes(trimmed);
-    })
-    .join("\n")
-    .trim();
 }
 
 export async function POST(request: Request) {
@@ -110,8 +64,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const sharedRules = `
+    const baseRules = `
 You are a senior professional CV writer and recruiter.
+
+Create a genuinely strong, recruiter-ready CV while staying completely truthful.
 
 ABSOLUTE TRUTH RULE
 
@@ -119,216 +75,158 @@ Never invent:
 - employers
 - company names
 - dates
+- duration
 - education
 - qualifications
 - licences
-- certificates
 - documents
+- certificates
 - achievements
 - numbers
 - software knowledge
 - languages
-- years of experience
 - locations
-- responsibilities not supported by the user
+- responsibilities unsupported by the candidate
 
-You may improve wording, structure and presentation only.
+You MAY:
+- rewrite rough information professionally
+- make weak wording stronger
+- organise information clearly
+- turn obvious real duties into professional CV bullet points
+- use professional terminology when it accurately describes the user's real work
 
-CV CONTENT RULE
+The final writing should NOT sound like copied user notes.
 
-The tailoredResume field must contain ONLY the CV.
+PROFILE
 
-Never include:
-- Cover Letter
-- Recommended Improvements
-- Missing Keywords
-- Profile Strength
-- Match Score
-- Suggestions
-- Commentary
-- Notes
+Write a natural professional profile of approximately 3 to 5 sentences.
 
-Those belong only in separate JSON fields.
+It should sound polished and employable.
 
-CV STRUCTURE
+Do not fill it with generic AI phrases.
 
-Use sections only when relevant information exists.
-
-Possible sections:
-
-Candidate Name
-
-Professional Profile
-
-Work Experience
-
-Skills
-
-Languages
-
-Driving Licence
-
-VCA
-
-Documents
-
-Certificates
-
-Education
-
-IMPORTANT RULE FOR LICENCES, DOCUMENTS AND CERTIFICATES
-
-Every type must be its OWN separate small section.
-
-Do NOT combine them.
-
-Example:
-
-Driving Licence
-Category B
-
-VCA
-VCA Basic
-
-Documents
-Work Permit
-
-Certificates
-Forklift Certificate
-
-If only a driving licence is mentioned:
-
-Driving Licence
-Driving licence
-
-If only VCA is mentioned:
-
-VCA
-VCA
-
-If documents are mentioned:
-
-Documents
-[document name]
-
-If certificates are mentioned:
-
-Certificates
-[certificate name]
-
-VERY IMPORTANT:
-
-Inside these sections write ONLY the actual item.
-
-Do NOT write sentences.
-
-Do NOT write explanations.
-
-Do NOT write:
-- "Holds a driving licence"
-- "Driving licence held"
-- "This licence allows..."
-- "Valid driving licence"
-- recommendations
-- commentary
-
-Only the short factual item.
-
-Example:
-
-Driving Licence
-Category B
-
-NOT:
-
-Driving Licence
-Holds a Category B driving licence and is able to travel between work locations.
-
-Same rule for VCA, Documents and Certificates.
-
-PROFESSIONAL PROFILE
-
-Write around 3 to 5 natural sentences.
-
-Keep it:
-- professional
-- direct
-- concise
-- recruiter-friendly
-- natural
-
-Do not include nationality or country of origin unless professionally relevant.
+Avoid:
+- highly motivated individual
+- dynamic professional
+- results-driven professional
+- originally from [country]
 
 WORK EXPERIENCE
 
-Use only real experience.
+Use professional wording.
 
-If enough information exists, create 3 to 5 concise bullet points.
+When enough factual information exists, create 3 to 5 strong concise bullets.
 
-Improve wording without inventing responsibilities.
+Example:
+
+Raw:
+"raznasqh paketi po adresi"
+
+Professional:
+"Delivered parcels to customer addresses while managing daily delivery tasks efficiently."
+
+This is allowed because it expresses the same real activity professionally.
+
+Do not invent extra responsibilities.
 
 SKILLS
 
-Use useful, specific skills supported by the user.
+Extract useful professional skills supported by the information.
 
-Avoid weak filler such as:
-- Highly motivated
-- Dynamic worker
-- Reliable work attitude
+Prefer concrete skills over generic personality traits.
 
 LANGUAGES
 
-Only include languages explicitly mentioned.
+Only include languages explicitly supplied.
 
-Do not put licences, documents, VCA or certificates in Languages.
+DRIVING LICENCE
 
-FORMATTING
+This is completely separate.
 
-Plain text only.
+If a driving licence exists:
+return ONLY the licence item inside drivingLicence.
 
-Use bullet character:
-•
+Examples:
+["Category B"]
 
-Do not use:
-#
-##
-**
-__
-code fences
+or if category is unknown:
+["Driving licence"]
 
-After the final CV section, STOP.
+Nothing else.
+
+VCA
+
+If VCA exists:
+return ONLY the VCA item inside vca.
+
+Examples:
+["VCA"]
+["VCA Basic"]
+["VCA VOL"]
+
+Nothing else.
+
+DOCUMENTS
+
+If other work or legal documents are explicitly mentioned:
+return ONLY their names inside documents.
+
+CERTIFICATES
+
+If certificates are explicitly mentioned:
+return ONLY their names inside certificates.
+
+Do not mix any of these categories together.
+
+Do not put driving licence inside certificates.
+Do not put VCA inside documents.
+Do not put documents inside skills.
+
+COVER LETTER
+
+Write a natural professional cover letter.
+
+Approximately 4 to 6 short paragraphs.
+
+Use only truthful information.
+
+It must sound human, not like a generic AI template.
+
+RECOMMENDATIONS
+
+Return maximum 3 useful improvements in missingKeywords.
+
+These are ONLY recommendations.
+
+They must never appear inside any CV section.
 `;
 
     const prompt =
       mode === "tailor"
         ? `
-${sharedRules}
+${baseRules}
 
-You are tailoring an existing CV for a specific vacancy.
+MODE: TAILOR EXISTING CV
+
+Improve the candidate's real CV for the supplied vacancy.
+
+Emphasise relevant real experience without inventing missing requirements.
 
 MATCH SCORE
 
-Return a realistic score from 0 to 100 based on:
-- relevant experience
-- supported skills
+Return a realistic job match score from 0 to 100.
+
+Judge:
+- experience
+- skills
 - qualifications
 - languages
-- licence requirements
-- alignment with the vacancy
+- licences
+- actual alignment with the vacancy
 
 MISSING KEYWORDS
 
-Return maximum 3 genuinely relevant missing requirements.
-
-Return them ONLY in missingKeywords.
-
-COVER LETTER
-
-Write a natural cover letter of approximately 4 to 6 short paragraphs.
-
-Use only truthful information.
-
-Return it ONLY in coverLetter.
+Return maximum 3 genuinely relevant missing or unclear requirements from the vacancy.
 
 CURRENT CV
 
@@ -339,77 +237,57 @@ JOB DESCRIPTION
 ${jobDescription}
 `
         : `
-${sharedRules}
+${baseRules}
 
-The user has written rough, casual notes about themselves.
+MODE: BUILD CV FROM ROUGH NOTES
 
-The notes may:
-- contain spelling mistakes
-- be badly organised
-- use slang
-- mix English, Dutch, Bulgarian or Turkish
-- contain Bulgarian written with Latin letters
+The user may write badly organised, casual or broken notes.
 
-Understand the obvious meaning and create a professional English CV.
+They may mix:
+- English
+- Dutch
+- Bulgarian
+- Bulgarian written with Latin letters
+- Turkish
 
-Do not invent anything.
+Understand the obvious meaning.
 
-ROLE TITLES
+Turn the information into strong professional English.
 
-You may create a simple role title when the type of work is obvious.
+Do NOT simply repeat the user's wording.
 
-Examples:
+Example:
 
-"pochistvah"
-→ Cleaner
+Raw:
+"rabotil sum dostavki s kola nqkolko meseca"
 
-"raznasqh paketi"
-→ Package Delivery Worker
+Good professional interpretation:
+Package Delivery Worker
 
-Do not make titles more senior than the information supports.
+Possible bullet:
+"Delivered parcels by car to customer addresses as part of daily delivery work."
 
-PROFILE STRENGTH
+Do not invent employer names or exact dates.
 
-Return a realistic score from 0 to 100.
+PROFILE STRENGTH SCORE
 
-Rough guide:
+Return:
 
 85-95:
-Strong detailed profile.
+Strong and detailed profile.
 
 70-84:
-Solid profile.
+Solid profile with useful experience and skills.
 
 55-69:
-Usable but limited.
+Usable but missing useful detail.
 
 Below 55:
-Very little useful information.
+Very little usable information.
 
-Do not lower the score only because employer names or exact dates are missing.
+Do not punish the user just because employer names or exact dates are missing.
 
-RECOMMENDED IMPROVEMENTS
-
-Return maximum 3 useful improvements.
-
-Return them ONLY in missingKeywords.
-
-Examples:
-- Employer name
-- Exact employment dates
-- Specific job duties
-- Licence category
-- Relevant certificate
-
-Never place them inside tailoredResume.
-
-COVER LETTER
-
-Write a natural general cover letter of approximately 4 to 6 short paragraphs.
-
-Return it ONLY in coverLetter.
-
-CONTACT DETAILS
+CONTACT DETAILS PROVIDED SEPARATELY
 
 Name:
 ${fullName || "Not provided"}
@@ -431,7 +309,7 @@ ${aboutMe}
       text: {
         format: {
           type: "json_schema",
-          name: "applyfast_result",
+          name: "applyfast_structured_cv",
           strict: true,
           schema: {
             type: "object",
@@ -442,6 +320,7 @@ ${aboutMe}
                 minimum: 0,
                 maximum: 100,
               },
+
               missingKeywords: {
                 type: "array",
                 maxItems: 3,
@@ -449,17 +328,144 @@ ${aboutMe}
                   type: "string",
                 },
               },
-              tailoredResume: {
-                type: "string",
+
+              cv: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  name: {
+                    type: "string",
+                  },
+
+                  contact: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      phone: {
+                        type: "string",
+                      },
+                      email: {
+                        type: "string",
+                      },
+                      location: {
+                        type: "string",
+                      },
+                    },
+                    required: [
+                      "phone",
+                      "email",
+                      "location",
+                    ],
+                  },
+
+                  profile: {
+                    type: "string",
+                  },
+
+                  workExperience: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        title: {
+                          type: "string",
+                        },
+                        employer: {
+                          type: "string",
+                        },
+                        duration: {
+                          type: "string",
+                        },
+                        bullets: {
+                          type: "array",
+                          items: {
+                            type: "string",
+                          },
+                        },
+                      },
+                      required: [
+                        "title",
+                        "employer",
+                        "duration",
+                        "bullets",
+                      ],
+                    },
+                  },
+
+                  skills: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  languages: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  drivingLicence: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  vca: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  documents: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  certificates: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+
+                  education: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
+                },
+                required: [
+                  "name",
+                  "contact",
+                  "profile",
+                  "workExperience",
+                  "skills",
+                  "languages",
+                  "drivingLicence",
+                  "vca",
+                  "documents",
+                  "certificates",
+                  "education",
+                ],
               },
+
               coverLetter: {
                 type: "string",
               },
             },
+
             required: [
               "matchScore",
               "missingKeywords",
-              "tailoredResume",
+              "cv",
               "coverLetter",
             ],
           },
@@ -476,40 +482,32 @@ ${aboutMe}
       );
     }
 
-    let result: AiResult;
-
-    try {
-      result = JSON.parse(outputText) as AiResult;
-    } catch (error) {
-      console.error("Could not parse OpenAI response:", error);
-      console.error("Raw response:", outputText);
-
-      return Response.json(
-        { error: "Could not process the generated application." },
-        { status: 500 }
-      );
-    }
+    const result = JSON.parse(outputText);
 
     return Response.json({
-      matchScore:
-        typeof result.matchScore === "number"
-          ? Math.max(0, Math.min(100, Math.round(result.matchScore)))
-          : 0,
+      matchScore: Math.max(
+        0,
+        Math.min(
+          100,
+          Math.round(result.matchScore || 0)
+        )
+      ),
 
       missingKeywords: Array.isArray(result.missingKeywords)
         ? result.missingKeywords.slice(0, 3)
         : [],
 
-      cvPreview: sanitizeCvText(result.tailoredResume || ""),
+      cv: result.cv,
 
-      coverLetterPreview: result.coverLetter || "",
+      coverLetter: result.coverLetter || "",
     });
   } catch (error) {
     console.error("ApplyFast generation error:", error);
 
     return Response.json(
       {
-        error: "We couldn't generate your application. Please try again.",
+        error:
+          "We couldn't generate your application. Please try again.",
       },
       {
         status: 500,
