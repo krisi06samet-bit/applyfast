@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -89,6 +91,79 @@ function cleanCv(cv: any) {
 
 export async function POST(request: Request) {
   try {
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.SUPABASE_ANON_KEY
+    ) {
+      return Response.json(
+        { error: "Supabase is not configured." },
+        { status: 500 }
+      );
+    }
+
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          },
+        },
+      }
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return Response.json(
+        {
+          error: "LOGIN_REQUIRED",
+          message: "Sign in to continue.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("credits")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError) {
+      console.error("ApplyFast profile error:", profileError);
+
+      return Response.json(
+        { error: "Could not load your credits." },
+        { status: 500 }
+      );
+    }
+
+    const currentCredits =
+      typeof profile?.credits === "number" ? profile.credits : 0;
+
+    if (currentCredits < 1) {
+      return Response.json(
+        {
+          error: "PAYMENT_REQUIRED",
+          message: "You need credits to generate an application.",
+          credits: 0,
+        },
+        { status: 402 }
+      );
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       return Response.json(
         { error: "OpenAI is not configured." },
@@ -612,6 +687,38 @@ ${aboutMe}
 
     const result = JSON.parse(outputText);
 
+    const nextCredits = currentCredits - 1;
+
+    const { data: updatedProfile, error: creditError } = await supabase
+      .from("profiles")
+      .update({
+        credits: nextCredits,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id)
+      .eq("credits", currentCredits)
+      .select("credits")
+      .maybeSingle();
+
+    if (creditError) {
+      console.error("ApplyFast credit update error:", creditError);
+
+      return Response.json(
+        { error: "Could not update your credits. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    if (!updatedProfile) {
+      return Response.json(
+        {
+          error: "CREDIT_CONFLICT",
+          message: "Your credits changed. Please try again.",
+        },
+        { status: 409 }
+      );
+    }
+
     return Response.json({
       matchScore: Math.max(
         0,
@@ -628,6 +735,8 @@ ${aboutMe}
       cv: cleanCv(result.cv),
 
       coverLetter: cleanOutputString(result.coverLetter),
+
+      creditsRemaining: updatedProfile.credits,
     });
   } catch (error) {
     console.error("ApplyFast generation error:", error);
