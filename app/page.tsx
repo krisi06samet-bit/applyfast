@@ -19,20 +19,34 @@ type CvSection = {
 const SECTION_NAMES = [
   "professional profile",
   "profile",
+
   "work experience",
   "experience",
   "employment history",
+
   "key skills",
   "core skills",
   "skills",
+
   "certifications",
+  "certification",
   "certificates",
+  "certificate",
+
+  "licence",
   "licences",
+  "license",
   "licenses",
   "driving licence",
+  "driving licences",
   "driving license",
+  "driving licenses",
+
   "languages",
+  "language",
+
   "education",
+
   "additional information",
 ];
 
@@ -44,36 +58,51 @@ function cleanLine(line: string) {
     .trim();
 }
 
-function isSectionHeading(line: string) {
-  const normalized = cleanLine(line)
+function normalizeHeading(line: string) {
+  return cleanLine(line)
     .replace(/:$/, "")
+    .trim()
     .toLowerCase();
+}
 
-  return SECTION_NAMES.includes(normalized);
+function isSectionHeading(line: string) {
+  return SECTION_NAMES.includes(normalizeHeading(line));
 }
 
 function niceHeading(line: string) {
-  const normalized = cleanLine(line)
-    .replace(/:$/, "")
-    .toLowerCase();
+  const normalized = normalizeHeading(line);
 
   const map: Record<string, string> = {
     "professional profile": "Professional Profile",
     profile: "Professional Profile",
+
     "work experience": "Work Experience",
     experience: "Work Experience",
     "employment history": "Work Experience",
+
     "key skills": "Skills",
     "core skills": "Skills",
     skills: "Skills",
+
     certifications: "Certifications",
+    certification: "Certifications",
     certificates: "Certifications",
-    licences: "Licences",
-    licenses: "Licences",
+    certificate: "Certifications",
+
+    licence: "Driving Licence",
+    licences: "Driving Licence",
+    license: "Driving Licence",
+    licenses: "Driving Licence",
     "driving licence": "Driving Licence",
+    "driving licences": "Driving Licence",
     "driving license": "Driving Licence",
+    "driving licenses": "Driving Licence",
+
     languages: "Languages",
+    language: "Languages",
+
     education: "Education",
+
     "additional information": "Additional Information",
   };
 
@@ -106,7 +135,10 @@ function parseCv(text: string) {
     }
 
     if (!currentSection) {
-      if (!name && !/^(phone|email|address|location|tel|mobile):?/i.test(line)) {
+      if (
+        !name &&
+        !/^(phone|email|address|location|tel|mobile):?/i.test(line)
+      ) {
         name = line;
       } else {
         contactLines.push(line);
@@ -275,7 +307,11 @@ export default function Home() {
         <div className="modeSelector">
           <button
             type="button"
-            className={mode === "tailor" ? "modeButton active" : "modeButton"}
+            className={
+              mode === "tailor"
+                ? "modeButton active"
+                : "modeButton"
+            }
             onClick={() => switchMode("tailor")}
           >
             <strong>I already have a CV</strong>
@@ -284,7 +320,11 @@ export default function Home() {
 
           <button
             type="button"
-            className={mode === "build" ? "modeButton active" : "modeButton"}
+            className={
+              mode === "build"
+                ? "modeButton active"
+                : "modeButton"
+            }
             onClick={() => switchMode("build")}
           >
             <strong>Build my CV</strong>
@@ -332,7 +372,9 @@ Manchester`}
               <textarea
                 rows={7}
                 value={jobDescription}
-                onChange={(e) => setJobDescription(e.target.value)}
+                onChange={(e) =>
+                  setJobDescription(e.target.value)
+                }
                 placeholder="Paste the job description here..."
               />
             </>
@@ -345,7 +387,8 @@ Manchester`}
                   <h2>Tell us about yourself</h2>
 
                   <p>
-                    Write normally. We&apos;ll turn it into a professional CV.
+                    Write normally. We&apos;ll turn it into a
+                    professional CV.
                   </p>
                 </div>
               </div>
@@ -367,27 +410,35 @@ You can write as little or as much as you want.`}
 
               <div className="contactTitle">
                 <h3>Contact details</h3>
-                <p>Optional — add what you want included in your CV.</p>
+                <p>
+                  Optional — add what you want included in your CV.
+                </p>
               </div>
 
               <div className="contactGrid">
                 <input
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(e) =>
+                    setFullName(e.target.value)
+                  }
                   placeholder="Full name"
                 />
 
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) =>
+                    setEmail(e.target.value)
+                  }
                   placeholder="Email"
                 />
 
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) =>
+                    setPhone(e.target.value)
+                  }
                   placeholder="Phone number"
                 />
               </div>
@@ -438,7 +489,8 @@ You can write as little or as much as you want.`}
                 <h2>Your CV is ready</h2>
 
                 <p>
-                  Review the full result before we enable downloads and payment.
+                  Review the full result before we enable
+                  downloads and payment.
                 </p>
               </div>
 
@@ -548,7 +600,15 @@ You can write as little or as much as you want.`}
                               )
                             )}
                           </div>
-                        ) : section.title === "Languages" ? (
+                        ) : section.title ===
+                          "Languages" ? (
+                          <p className="languageLine">
+                            {section.lines
+                              .map(stripBullet)
+                              .join(" · ")}
+                          </p>
+                        ) : section.title ===
+                          "Driving Licence" ? (
                           <p className="languageLine">
                             {section.lines
                               .map(stripBullet)
@@ -618,14 +678,16 @@ You can write as little or as much as you want.`}
             </h2>
 
             <p>
-              Professional CV, cover letter and application insights built
-              around your real experience.
+              Professional CV, cover letter and application
+              insights built around your real experience.
             </p>
           </div>
 
           <div className="offerPrice">
             <strong>€6.99</strong>
-            <span>10 applications · one-time</span>
+            <span>
+              10 applications · one-time
+            </span>
           </div>
         </section>
       </section>
