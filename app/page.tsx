@@ -58,6 +58,37 @@ function cleanLine(line: string) {
     .trim();
 }
 
+function removeCoverLetterFromCv(text: string) {
+  if (!text) {
+    return "";
+  }
+
+  const patterns = [
+    /\n\s*cover letter\s*:?\s*\n/i,
+    /\n\s*cover letter\s*:?\s*/i,
+    /\s+[·|•-]\s*cover letter\s*[·|•:-]/i,
+    /\bcover letter\b\s*:?\s*/i,
+  ];
+
+  let cutIndex = -1;
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (match && typeof match.index === "number") {
+      if (cutIndex === -1 || match.index < cutIndex) {
+        cutIndex = match.index;
+      }
+    }
+  }
+
+  if (cutIndex !== -1) {
+    return text.slice(0, cutIndex).trim();
+  }
+
+  return text.trim();
+}
+
 function normalizeHeading(line: string) {
   return cleanLine(line)
     .replace(/:$/, "")
@@ -110,10 +141,22 @@ function niceHeading(line: string) {
 }
 
 function parseCv(text: string) {
-  const rawLines = text
+  const safeCvText = removeCoverLetterFromCv(text);
+
+  const rawLines = safeCvText
     .split("\n")
     .map(cleanLine)
-    .filter(Boolean);
+    .filter((line) => {
+      if (!line) {
+        return false;
+      }
+
+      if (line === "." || line === "•" || line === "-" || line === "·") {
+        return false;
+      }
+
+      return true;
+    });
 
   let name = "";
   const contactLines: string[] = [];
@@ -123,6 +166,10 @@ function parseCv(text: string) {
 
   for (let i = 0; i < rawLines.length; i += 1) {
     const line = rawLines[i];
+
+    if (/^cover letter:?$/i.test(line)) {
+      break;
+    }
 
     if (isSectionHeading(line)) {
       currentSection = {
@@ -150,10 +197,28 @@ function parseCv(text: string) {
     currentSection.lines.push(line);
   }
 
+  const cleanedSections = sections
+    .map((section) => ({
+      ...section,
+      lines: section.lines
+        .map((line) => {
+          const lowerLine = line.toLowerCase();
+          const coverIndex = lowerLine.indexOf("cover letter");
+
+          if (coverIndex !== -1) {
+            return line.slice(0, coverIndex).trim();
+          }
+
+          return line;
+        })
+        .filter(Boolean),
+    }))
+    .filter((section) => section.lines.length > 0);
+
   return {
     name,
     contactLines,
-    sections,
+    sections: cleanedSections,
   };
 }
 
@@ -372,9 +437,7 @@ Manchester`}
               <textarea
                 rows={7}
                 value={jobDescription}
-                onChange={(e) =>
-                  setJobDescription(e.target.value)
-                }
+                onChange={(e) => setJobDescription(e.target.value)}
                 placeholder="Paste the job description here..."
               />
             </>
@@ -387,8 +450,7 @@ Manchester`}
                   <h2>Tell us about yourself</h2>
 
                   <p>
-                    Write normally. We&apos;ll turn it into a
-                    professional CV.
+                    Write normally. We&apos;ll turn it into a professional CV.
                   </p>
                 </div>
               </div>
@@ -410,35 +472,27 @@ You can write as little or as much as you want.`}
 
               <div className="contactTitle">
                 <h3>Contact details</h3>
-                <p>
-                  Optional — add what you want included in your CV.
-                </p>
+                <p>Optional — add what you want included in your CV.</p>
               </div>
 
               <div className="contactGrid">
                 <input
                   value={fullName}
-                  onChange={(e) =>
-                    setFullName(e.target.value)
-                  }
+                  onChange={(e) => setFullName(e.target.value)}
                   placeholder="Full name"
                 />
 
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) =>
-                    setEmail(e.target.value)
-                  }
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email"
                 />
 
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) =>
-                    setPhone(e.target.value)
-                  }
+                  onChange={(e) => setPhone(e.target.value)}
                   placeholder="Phone number"
                 />
               </div>
@@ -489,8 +543,7 @@ You can write as little or as much as you want.`}
                 <h2>Your CV is ready</h2>
 
                 <p>
-                  Review the full result before we enable
-                  downloads and payment.
+                  Review the full result before we enable downloads and payment.
                 </p>
               </div>
 
@@ -600,15 +653,13 @@ You can write as little or as much as you want.`}
                               )
                             )}
                           </div>
-                        ) : section.title ===
-                          "Languages" ? (
+                        ) : section.title === "Languages" ? (
                           <p className="languageLine">
                             {section.lines
                               .map(stripBullet)
                               .join(" · ")}
                           </p>
-                        ) : section.title ===
-                          "Driving Licence" ? (
+                        ) : section.title === "Driving Licence" ? (
                           <p className="languageLine">
                             {section.lines
                               .map(stripBullet)
@@ -649,7 +700,6 @@ You can write as little or as much as you want.`}
             <article className="coverDocument">
               <div className="coverDocumentHeader">
                 <span>Cover Letter</span>
-
                 <strong>Ready to use</strong>
               </div>
 
@@ -673,21 +723,17 @@ You can write as little or as much as you want.`}
               WHAT YOU&apos;LL GET
             </p>
 
-            <h2>
-              A complete application package
-            </h2>
+            <h2>A complete application package</h2>
 
             <p>
-              Professional CV, cover letter and application
-              insights built around your real experience.
+              Professional CV, cover letter and application insights built
+              around your real experience.
             </p>
           </div>
 
           <div className="offerPrice">
             <strong>€6.99</strong>
-            <span>
-              10 applications · one-time
-            </span>
+            <span>10 applications · one-time</span>
           </div>
         </section>
       </section>
