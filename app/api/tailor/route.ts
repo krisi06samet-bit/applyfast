@@ -29,16 +29,64 @@ function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function sanitizeCvText(text: string) {
+  if (!text) return "";
+
+  const stopMarkers = [
+    "Cover Letter",
+    "Recommended Improvements",
+    "Missing Keywords",
+    "Profile Strength",
+    "Match Score",
+    "Suggestions",
+    "Recommendations",
+  ];
+
+  let safe = text.trim();
+  let cutIndex = safe.length;
+
+  for (const marker of stopMarkers) {
+    const lowerSafe = safe.toLowerCase();
+    const lowerMarker = marker.toLowerCase();
+
+    const index = lowerSafe.indexOf(lowerMarker);
+
+    if (index !== -1 && index < cutIndex) {
+      cutIndex = index;
+    }
+  }
+
+  safe = safe.slice(0, cutIndex).trim();
+
+  return safe
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => {
+      const trimmed = line.trim();
+
+      if (!trimmed) return true;
+
+      if (
+        trimmed === "." ||
+        trimmed === "•" ||
+        trimmed === "-" ||
+        trimmed === "·"
+      ) {
+        return false;
+      }
+
+      return true;
+    })
+    .join("\n")
+    .trim();
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
       return Response.json(
-        {
-          error: "OpenAI is not configured.",
-        },
-        {
-          status: 500,
-        }
+        { error: "OpenAI is not configured." },
+        { status: 500 }
       );
     }
 
@@ -56,239 +104,59 @@ export async function POST(request: Request) {
 
     if (mode !== "tailor" && mode !== "build") {
       return Response.json(
-        {
-          error: "Invalid mode.",
-        },
-        {
-          status: 400,
-        }
+        { error: "Invalid mode." },
+        { status: 400 }
       );
     }
 
-    if (mode === "tailor") {
-      if (!cvText || !jobDescription) {
-        return Response.json(
-          {
-            error: "CV and job description are required.",
-          },
-          {
-            status: 400,
-          }
-        );
-      }
+    if (mode === "tailor" && (!cvText || !jobDescription)) {
+      return Response.json(
+        { error: "CV and job description are required." },
+        { status: 400 }
+      );
     }
 
-    if (mode === "build") {
-      if (!aboutMe) {
-        return Response.json(
-          {
-            error: "Tell us about yourself first.",
-          },
-          {
-            status: 400,
-          }
-        );
-      }
+    if (mode === "build" && !aboutMe) {
+      return Response.json(
+        { error: "Tell us about yourself first." },
+        { status: 400 }
+      );
     }
 
     const prompt =
       mode === "tailor"
         ? `
-You are a senior CV writer and recruiter.
+You are a senior professional CV writer and recruiter.
 
 Your task is to improve a real person's CV for a specific job vacancy.
 
-The final result must feel like a professional human-written application, not AI-generated text.
+The result must look and read like a real professional CV written by a human.
 
-ABSOLUTE TRUTH RULE
-
-Never invent anything.
+TRUTH RULE
 
 Never invent:
 - employers
 - company names
-- employment dates
+- dates
 - education
 - qualifications
 - certificates
 - licences
-- responsibilities the person did not mention
 - achievements
-- numbers
+- metrics
 - software knowledge
 - languages
 - years of experience
 - locations
-- job titles that are not reasonably supported by the CV
+- duties the candidate did not actually mention
 
-You may improve wording, structure and clarity.
+You may improve wording and presentation, but not facts.
 
-You may turn short factual notes into professional sentences.
+CV STRUCTURE
 
-You may describe an existing responsibility more professionally, but you must not add a new responsibility that is unsupported.
+The CV text must contain ONLY CV content.
 
-CV WRITING STYLE
-
-The CV should:
-- sound natural
-- be concise
-- be recruiter-friendly
-- be ATS-friendly
-- avoid exaggerated language
-- avoid corporate filler
-- avoid obvious AI phrases
-- avoid repeating the same adjectives
-- avoid repeating the same information across sections
-- use clear English
-- use short, useful sentences
-- focus on employability
-
-Avoid weak filler such as:
-- highly motivated individual
-- dynamic professional
-- results-driven professional
-- passionate individual
-- exceptional professional
-
-Do not use meaningless claims unless supported.
-
-PROFESSIONAL PROFILE
-
-Write a strong profile of approximately 3 to 5 sentences.
-
-It should quickly explain:
-- what kind of worker or professional the candidate is
-- relevant experience
-- strongest supported abilities
-- why they may fit the target position
-
-Do not include nationality or country of origin unless it is directly relevant to the job.
-
-Do not write phrases such as "Originally from Bulgaria" simply because a country appears in the CV.
-
-WORK EXPERIENCE
-
-Keep every real role that is useful.
-
-For each role:
-- preserve truthful employer, role and dates when supplied
-- improve wording
-- create strong concise bullet points from responsibilities that are actually supported
-- normally use 3 to 5 useful bullets when enough information exists
-- do not create fake achievements or metrics
-
-A bullet should sound stronger than a raw note.
-
-For example:
-"delivered packages"
-
-can become something like:
-"Delivered parcels safely and efficiently to residential and business addresses."
-
-But only if the original information supports parcel delivery.
-
-SKILLS
-
-Choose useful professional skills supported by the CV.
-
-Prefer specific skills over vague personality words.
-
-Good examples when supported:
-- Customer service
-- Parcel delivery
-- Route planning
-- Warehouse operations
-- Scaffolding
-- Order picking
-- Driving
-- Team coordination
-- Safety awareness
-
-Avoid filling the skills section with generic items such as:
-- Reliable work attitude
-- Hardworking
-- Motivated
-- Good person
-
-Soft skills may be included only when useful and supported.
-
-LANGUAGES
-
-Only include languages explicitly stated by the candidate.
-
-LICENCES AND CERTIFICATIONS
-
-Keep these separate from languages.
-
-Examples:
-Driving Licence
-VCA
-Forklift Certificate
-
-Do not combine licence information into the Languages section.
-
-ADDITIONAL INFORMATION
-
-Do not create this section unless something genuinely useful does not fit elsewhere.
-
-Do not include nationality or "From [country]" unless professionally relevant.
-
-TARGET JOB
-
-Use the vacancy to improve emphasis and wording.
-
-Do not copy the vacancy blindly.
-
-Never claim a missing requirement as if the candidate has it.
-
-MATCH SCORE
-
-Return a realistic match score between 0 and 100.
-
-Judge:
-- relevant experience
-- supported skills
-- qualifications
-- languages
-- licence requirements
-- alignment with the vacancy
-
-Do not inflate the score.
-
-MISSING KEYWORDS
-
-Return a maximum of 3 useful missing keywords or requirements.
-
-Only return genuinely relevant items from the vacancy that are missing or unclear in the CV.
-
-Do not tell the candidate they possess them.
-
-COVER LETTER
-
-Write a natural cover letter specifically for the vacancy.
-
-Use approximately 4 to 6 short paragraphs.
-
-It should:
-- sound like a real person
-- mention the role naturally
-- explain the candidate's strongest relevant experience
-- connect real experience to the vacancy
-- avoid repeating the CV line by line
-- avoid fake enthusiasm
-- avoid clichés
-- finish with a simple professional closing
-
-Do not use generic sentences repeatedly such as:
-"I am writing to express my interest..."
-
-Prefer a more direct natural opening.
-
-FORMATTING
-
-Return the CV as plain text.
-
-Use this general structure when information is available:
+Allowed sections:
 
 Candidate Name
 
@@ -306,18 +174,132 @@ Certifications
 
 Education
 
-Only include sections that actually contain useful information.
+Only include sections that have real information.
 
-For work experience, use simple bullet points beginning with the bullet character •.
+IMPORTANT:
+After the final CV section, STOP.
 
-Do not use markdown formatting.
+Do not append:
+- Cover Letter
+- Recommended Improvements
+- Missing Keywords
+- Match Score
+- Profile Strength
+- Suggestions
+- Notes
+- Commentary
+- Explanations
 
-Do not use:
-- #
-- ##
-- **
-- __
-- code fences
+Those belong in separate JSON fields only.
+
+PROFESSIONAL PROFILE
+
+Write approximately 3 to 5 natural sentences.
+
+Keep it:
+- professional
+- direct
+- recruiter-friendly
+- natural
+- concise
+
+Do not include nationality or country of origin unless professionally relevant.
+
+WORK EXPERIENCE
+
+Use only truthful experience.
+
+Improve raw notes into strong professional wording.
+
+Use 3 to 5 bullet points when enough factual information exists.
+
+Do not invent responsibilities.
+
+SKILLS
+
+Use specific useful skills supported by the CV.
+
+Prefer:
+- Customer service
+- Driving
+- Parcel delivery
+- Cleaning services
+- Warehouse work
+- Scaffolding
+- Safety awareness
+- Teamwork
+- Time management
+
+Avoid meaningless filler such as:
+- Reliable work attitude
+- Highly motivated
+- Dynamic professional
+
+LANGUAGES
+
+Only include languages explicitly mentioned.
+
+DRIVING LICENCE
+
+This section must contain ONLY driving licence information.
+
+Examples:
+
+Driving Licence
+Category B
+
+or:
+
+Driving Licence
+Driving licence
+
+Do not place any other information in this section.
+
+Do not put:
+- recommendations
+- missing keywords
+- cover letter
+- employer suggestions
+- dates suggestions
+- commentary
+
+CERTIFICATIONS
+
+Only include real certificates supplied by the candidate.
+
+MATCH SCORE
+
+Return a realistic score from 0 to 100 based on alignment with the vacancy.
+
+MISSING KEYWORDS
+
+Return maximum 3 useful missing requirements from the vacancy.
+
+They must be returned ONLY in missingKeywords.
+
+Do not place them inside the CV.
+
+COVER LETTER
+
+Write a natural 4 to 6 paragraph cover letter.
+
+Return it ONLY in coverLetter.
+
+Never include it inside tailoredResume.
+
+FORMATTING
+
+Plain text only.
+
+Use bullet character:
+•
+
+Do not use markdown:
+#
+##
+**
+__
+code fences
 
 CURRENT CV
 
@@ -328,25 +310,21 @@ JOB DESCRIPTION
 ${jobDescription}
 `
         : `
-You are a senior CV writer and recruiter.
+You are a senior professional CV writer and recruiter.
 
-A normal person has written rough notes about themselves.
+A normal person has written rough, simple, possibly messy notes about themselves.
 
 The notes may:
-- be very short
-- be badly organised
 - contain spelling mistakes
-- contain slang
-- mix languages
-- contain simple phrases instead of professional CV language
+- be unstructured
+- use slang
+- mix Bulgarian, Dutch, English or Turkish
+- use Bulgarian written with Latin letters
+- contain only short phrases
 
-Your job is to understand the meaning and turn those notes into a professional CV.
+Your job is to understand the obvious meaning and convert those notes into a professional English CV.
 
-The final CV must feel like something a real recruiter could receive.
-
-ABSOLUTE TRUTH RULE
-
-Never invent facts.
+TRUTH RULE
 
 Never invent:
 - employers
@@ -355,263 +333,36 @@ Never invent:
 - education
 - qualifications
 - certificates
-- experience duration
-- job titles that are unsupported
+- licences
 - achievements
 - numbers
 - software knowledge
 - languages
-- responsibilities the person did not describe
+- years of experience
 - locations
-- licences
+- responsibilities that are not supported
 
-If the user writes informal or broken language, understand the obvious meaning and rewrite it professionally.
+You may professionally rewrite obvious meaning.
 
 Example:
 
 "rabotil sum dostavki s kola"
-can be understood as work involving deliveries by car.
 
-"gledam da sum tochno na vreme"
-can support punctuality and time-conscious work.
+may become:
 
-"rabotil sum fizicheska rabota"
-can support previous physical work experience.
-
-But you must not invent where the person worked, when they worked there, or exactly what company they worked for.
-
-LANGUAGE UNDERSTANDING
-
-The notes may contain Bulgarian written with Latin letters, Dutch, English, Turkish or mixed language.
-
-Understand obvious meaning and produce the final CV in professional English.
-
-Do not mention that the original notes were written poorly.
-
-PROFESSIONAL PROFILE
-
-Write approximately 3 to 5 natural sentences.
-
-The profile should explain:
-- the type of work the person has done
-- relevant experience
-- useful strengths supported by their notes
-- practical employability
-
-Do not stuff every fact into the profile.
-
-Do not mention nationality or country of origin unless professionally relevant.
-
-Do not write "Originally from Bulgaria" simply because the person mentions Bulgaria.
-
-WORK EXPERIENCE
-
-Turn rough job information into professional experience.
-
-If the person gives a real employer, use it.
-
-If no employer is provided, do not invent one.
-
-If no exact dates are provided, do not invent dates.
-
-If a duration is provided, you may state the truthful duration.
-
-Use a professional role title only when the type of work clearly supports it.
-
-Examples:
-
-Notes:
-"raznasqh paketi po adresi"
-
-A reasonable role title:
 "Package Delivery Worker"
 
-Notes:
-"pochistvah ofisi"
+and a bullet such as:
 
-A reasonable role title:
-"Cleaner"
+"Delivered parcels to customer addresses using a car."
 
-Do not make the title more senior than the information supports.
+But do not invent employer, dates, route software or delivery numbers.
 
-Create useful bullet points from the real information.
+CV STRUCTURE
 
-Normally use 3 to 5 bullets when enough information exists.
+The tailoredResume field must contain ONLY the CV.
 
-Make bullets stronger and clearer without inventing details.
-
-Example:
-
-Raw note:
-"raznasqh paketi po adresi"
-
-Professional bullet:
-"Delivered parcels to customer addresses while managing daily delivery tasks."
-
-Raw note:
-"mnogo karam prez denq"
-
-Professional bullet:
-"Comfortable spending extended periods driving during the working day."
-
-Do not invent:
-- delivery targets
-- number of packages
-- customer satisfaction percentages
-- route software
-- warehouse systems
-- safety records
-unless explicitly supplied.
-
-SKILLS
-
-Select specific, useful skills supported by the person's notes.
-
-Prefer concrete skills.
-
-Examples when supported:
-- Package delivery
-- Driving
-- Parcel handling
-- Customer communication
-- Physical work
-- Teamwork
-- Time management
-- Cleaning
-- Warehouse work
-- Scaffolding
-- Safety awareness
-
-Avoid weak filler such as:
-- Reliable work attitude
-- Highly motivated
-- Hardworking person
-- Dynamic worker
-
-It is acceptable to include a few soft skills, but the section should mainly contain useful employable abilities.
-
-LANGUAGES
-
-Only include languages explicitly mentioned by the person.
-
-Do not guess proficiency levels unless supplied.
-
-Keep licence information out of the Languages section.
-
-DRIVING LICENCE
-
-If the person says they have a driving licence, create a separate section called:
-
-Driving Licence
-
-If the category is supplied, include it.
-
-For example:
-Category B
-
-Do not write "valid" unless the person actually indicated that.
-
-CERTIFICATIONS
-
-If the person mentions certificates such as VCA, forklift certification or similar, create a separate Certifications section.
-
-ADDITIONAL INFORMATION
-
-Avoid this section unless there is genuinely useful professional information that cannot fit elsewhere.
-
-Never create:
-"From Bulgaria"
-"Originally from Bulgaria"
-"Nationality: Bulgarian"
-
-unless the user specifically asks for nationality to be included.
-
-CV QUALITY
-
-The CV should:
-- be professional
-- be concise
-- sound natural
-- avoid obvious AI writing
-- avoid unnecessary repetition
-- avoid exaggerated claims
-- avoid filler
-- be easy to scan
-- make limited experience look as strong as truthfully possible
-
-PROFILE STRENGTH SCORE
-
-Return a realistic profile strength score between 0 and 100.
-
-The score measures how complete and employable the information is.
-
-Use this rough guide:
-
-85 to 95:
-Strong profile with clear experience, useful skills and enough detail.
-
-70 to 84:
-Solid profile with useful experience and skills but some information is missing.
-
-55 to 69:
-Usable but sparse profile.
-
-Below 55:
-Very little useful information supplied.
-
-IMPORTANT:
-
-Do not lower the score simply because the user did not provide exact employer names or exact dates.
-
-Someone with real experience, languages, a driving licence and useful skills may still have a solid score.
-
-RECOMMENDED IMPROVEMENTS
-
-Return a maximum of 3 useful things the candidate could add to improve their CV.
-
-These must be suggestions, not invented facts.
-
-Good examples:
-- Exact employment dates
-- Employer name
-- VCA certificate
-- Forklift certificate
-- Specific job responsibilities
-
-Do not recommend random skills unrelated to the person's background.
-
-For example, do not recommend "Cleaning equipment" to a delivery worker unless cleaning is genuinely relevant.
-
-COVER LETTER
-
-Create a general professional cover letter based only on the person's real information.
-
-Because there may be no specific vacancy, keep it suitable for the type of work suggested by the profile.
-
-Use approximately 4 to 6 short paragraphs.
-
-It should:
-- sound natural
-- be easy to customise
-- highlight real experience
-- explain practical strengths
-- avoid generic AI phrases
-- avoid repeating the CV line by line
-
-Avoid always opening with:
-"I am writing to express my interest..."
-
-Use a more natural opening when possible.
-
-If the person's name is available, sign using that name.
-
-If no name is available, do not invent one.
-
-FORMATTING
-
-Return the CV as plain text.
-
-Use this structure when information exists:
+Use these sections when information exists:
 
 Candidate Name
 
@@ -629,18 +380,188 @@ Certifications
 
 Education
 
-Only include sections with useful information.
+IMPORTANT:
+After the final CV section, STOP.
 
-Use simple bullet points beginning with • for work responsibilities.
+Do not append anything else.
 
-Do not use markdown formatting.
+Do not append:
+- Recommended Improvements
+- Suggestions
+- Missing Keywords
+- Profile Strength
+- Match Score
+- Cover Letter
+- Notes
+- Commentary
+
+Those belong ONLY in separate JSON fields.
+
+PROFESSIONAL PROFILE
+
+Write approximately 3 to 5 natural sentences.
+
+The profile should explain:
+- what kind of work the person has done
+- useful experience
+- practical strengths
+- employability
+
+Avoid:
+- exaggerated wording
+- AI filler
+- nationality unless relevant
+- phrases such as "Originally from Bulgaria"
+
+WORK EXPERIENCE
+
+If the user gives a type of job, create a reasonable simple role title.
+
+Examples:
+
+"pochistvah ofisi"
+→ Cleaner
+
+"raznasqh paketi"
+→ Package Delivery Worker
+
+Do not create senior titles.
+
+If no employer is given, do not invent one.
+
+If no exact dates are given, do not invent dates.
+
+If duration is given, you may use it.
+
+Create 3 to 5 useful bullets when enough real information exists.
+
+Make them sound professional but factual.
+
+SKILLS
+
+Use only supported skills.
+
+Prefer concrete useful skills.
+
+Examples when supported:
+- Cleaning services
+- Driving
+- Parcel delivery
+- Physical work
+- Customer communication
+- Teamwork
+- Time management
+- Warehouse work
+- Scaffolding
+- Safety awareness
+
+Avoid weak filler:
+- Reliable work attitude
+- Hardworking person
+- Highly motivated
+- Dynamic worker
+
+LANGUAGES
+
+Only include languages explicitly mentioned.
+
+DRIVING LICENCE
+
+This section must contain ONLY licence information.
+
+If category is known:
+
+Driving Licence
+Category B
+
+If category is not known:
+
+Driving Licence
+Driving licence
+
+Do not place anything else here.
+
+Never put:
+- Recommended Improvements
+- employer name suggestions
+- employment date suggestions
+- certifications suggestions
+- Cover Letter
+- commentary
+
+CERTIFICATIONS
+
+Only include certificates actually mentioned.
+
+ADDITIONAL INFORMATION
+
+Avoid this section unless truly necessary.
+
+Do not include:
+- nationality
+- country of origin
+- "From Bulgaria"
+
+PROFILE STRENGTH
+
+Return a realistic score between 0 and 100.
+
+Use roughly:
+
+85 to 95:
+Strong and detailed profile.
+
+70 to 84:
+Solid profile with good useful information.
+
+55 to 69:
+Usable but limited.
+
+Below 55:
+Very little usable information.
+
+Do not reduce the score just because exact employer names or dates are absent.
+
+RECOMMENDED IMPROVEMENTS
+
+Return maximum 3 improvements.
+
+They must appear ONLY in missingKeywords.
+
+Do not place them inside tailoredResume.
+
+Examples:
+- Employer name
+- Exact employment dates
+- Specific job duties
+- Licence category
+- Relevant certificate
+
+Keep them relevant.
+
+COVER LETTER
+
+Write a natural general cover letter of approximately 4 to 6 short paragraphs.
+
+Use only truthful information.
+
+Return it ONLY in coverLetter.
+
+Do not include the cover letter inside tailoredResume.
+
+FORMATTING
+
+Plain text only.
+
+Use bullet character:
+•
 
 Do not use:
-- #
-- ##
-- **
-- __
-- code fences
+#
+##
+**
+__
+code fences
 
 CONTACT DETAILS
 
@@ -703,15 +624,9 @@ ${aboutMe}
     const outputText = response.output_text?.trim();
 
     if (!outputText) {
-      console.error("OpenAI returned no output text.");
-
       return Response.json(
-        {
-          error: "Could not generate your application.",
-        },
-        {
-          status: 500,
-        }
+        { error: "Could not generate your application." },
+        { status: 500 }
       );
     }
 
@@ -724,14 +639,12 @@ ${aboutMe}
       console.error("Raw response:", outputText);
 
       return Response.json(
-        {
-          error: "Could not process the generated application.",
-        },
-        {
-          status: 500,
-        }
+        { error: "Could not process the generated application." },
+        { status: 500 }
       );
     }
+
+    const safeCv = sanitizeCvText(result.tailoredResume || "");
 
     return Response.json({
       matchScore:
@@ -743,7 +656,7 @@ ${aboutMe}
         ? result.missingKeywords.slice(0, 3)
         : [],
 
-      cvPreview: result.tailoredResume || "",
+      cvPreview: safeCv,
 
       coverLetterPreview: result.coverLetter || "",
     });
