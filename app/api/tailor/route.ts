@@ -22,6 +22,71 @@ function clean(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const placeholderValues = new Set([
+  "not provided",
+  "not specified",
+  "unknown",
+  "n/a",
+  "none",
+]);
+
+function cleanOutputString(value: unknown) {
+  const cleaned = clean(value);
+
+  return placeholderValues.has(cleaned.toLowerCase())
+    ? ""
+    : cleaned;
+}
+
+function cleanOutputItems(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(cleanOutputString)
+    .filter(Boolean);
+}
+
+function cleanCv(cv: any) {
+  const contact = cv?.contact || {};
+  const workExperience = Array.isArray(cv?.workExperience)
+    ? cv.workExperience
+        .map((job: any) => ({
+          title: cleanOutputString(job?.title),
+          employer: cleanOutputString(job?.employer),
+          duration: cleanOutputString(job?.duration),
+          bullets: cleanOutputItems(job?.bullets),
+        }))
+        .filter(
+          (job: any) =>
+            job.title ||
+            job.employer ||
+            job.duration ||
+            job.bullets.length > 0
+        )
+    : [];
+
+  return {
+    name: cleanOutputString(cv?.name),
+    contact: {
+      phone: cleanOutputString(contact.phone),
+      email: cleanOutputString(contact.email),
+      location: cleanOutputString(contact.location),
+    },
+    profile: cleanOutputString(cv?.profile),
+    workExperience,
+    skills: cleanOutputItems(cv?.skills),
+    languages: cleanOutputItems(cv?.languages),
+    drivingLicence: cleanOutputItems(cv?.drivingLicence),
+    vca: cleanOutputItems(cv?.vca),
+    documents: cleanOutputItems(cv?.documents),
+    certificates: cleanOutputItems(cv?.certificates),
+    education: cleanOutputItems(cv?.education),
+    additionalInformation: cleanOutputItems(
+      cv?.additionalInformation
+    ),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -87,6 +152,37 @@ Never invent:
 - languages
 - locations
 - responsibilities unsupported by the candidate
+
+COMPLETE INFORMATION COVERAGE
+
+Read the candidate's entire input by meaning, not by looking only for a fixed
+list of keywords. People may describe the same fact in many languages, with
+spelling mistakes, abbreviations, informal wording or unfamiliar terminology.
+
+Before writing the CV, internally identify every clear candidate-provided fact,
+including experience, duties, skills, languages, availability, locations,
+personal facts, licences, credentials, qualifications, documents and
+certificates. Place each fact in the most natural structured field.
+
+After writing the CV, compare it against that internal fact inventory. Do not
+silently discard any clear, useful, real-looking fact supplied by the candidate.
+
+This is a semantic task. Do not require exact words such as "document",
+"certificate", "licence" or "VCA" when the surrounding meaning clearly
+identifies the type of information.
+
+If an unfamiliar term is clearly presented as a document, certificate, licence
+or credential, preserve the candidate's wording professionally in the relevant
+field. Do not rename it to a familiar credential and do not guess what it means.
+
+If a clear candidate-provided fact does not naturally belong in any existing CV
+field, preserve it in additionalInformation. For example, "from Italy" becomes
+"From Italy". Do not convert that into nationality unless the candidate
+explicitly states their nationality.
+
+Examples illustrate the rule but are not an exhaustive vocabulary list. Apply
+the same reasoning to all occupations, countries, languages, documents,
+credentials, personal circumstances and other candidate inputs.
 
 You MAY:
 - rewrite rough information professionally
@@ -168,19 +264,43 @@ Nothing else.
 
 DOCUMENTS
 
-If other work or legal documents are explicitly mentioned:
+If other work, legal or administrative documents are supplied or clearly
+described by context:
 return ONLY their names inside documents.
+
+If the document is unfamiliar, keep its original meaning and wording. You may
+fix normal casing, spacing and obvious presentation issues, but must not infer
+or substitute another document.
 
 CERTIFICATES
 
-If certificates are explicitly mentioned:
+If certificates are supplied or clearly described by context:
 return ONLY their names inside certificates.
+
+If the certificate is unfamiliar, keep its original meaning and wording. You
+may fix normal casing, spacing and obvious presentation issues, but must not
+infer or substitute another certificate.
 
 Do not mix any of these categories together.
 
 Do not put driving licence inside certificates.
 Do not put VCA inside documents.
 Do not put documents inside skills.
+
+ADDITIONAL INFORMATION
+
+Use additionalInformation for clear candidate-provided facts that are useful
+but do not naturally fit profile, workExperience, skills, languages,
+drivingLicence, vca, documents, certificates or education.
+
+Keep each fact as a short standalone item. Preserve its meaning without making
+assumptions.
+
+EMPTY VALUES
+
+Use an empty string or empty array when information is absent. Never output
+placeholder values such as "Not provided", "Not specified", "Unknown", "N/A"
+or "None". Do not create employer or duration lines when they were not supplied.
 
 COVER LETTER
 
@@ -290,13 +410,13 @@ Do not punish the user just because employer names or exact dates are missing.
 CONTACT DETAILS PROVIDED SEPARATELY
 
 Name:
-${fullName || "Not provided"}
+${fullName}
 
 Email:
-${email || "Not provided"}
+${email}
 
 Phone:
-${phone || "Not provided"}
+${phone}
 
 ROUGH USER NOTES
 
@@ -441,6 +561,13 @@ ${aboutMe}
                       type: "string",
                     },
                   },
+
+                  additionalInformation: {
+                    type: "array",
+                    items: {
+                      type: "string",
+                    },
+                  },
                 },
                 required: [
                   "name",
@@ -454,6 +581,7 @@ ${aboutMe}
                   "documents",
                   "certificates",
                   "education",
+                  "additionalInformation",
                 ],
               },
 
@@ -497,9 +625,9 @@ ${aboutMe}
         ? result.missingKeywords.slice(0, 3)
         : [],
 
-      cv: result.cv,
+      cv: cleanCv(result.cv),
 
-      coverLetter: result.coverLetter || "",
+      coverLetter: cleanOutputString(result.coverLetter),
     });
   } catch (error) {
     console.error("ApplyFast generation error:", error);
