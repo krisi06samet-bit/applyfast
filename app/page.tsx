@@ -42,7 +42,7 @@ type Result = {
 };
 
 function hasItems(items?: string[]) {
-  return Array.isArray(items) && items.length > 0;
+  return Array.isArray(items) && items.some((item) => item.trim());
 }
 
 function cleanItems(items?: string[]) {
@@ -51,6 +51,27 @@ function cleanItems(items?: string[]) {
   return items
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function getDrivingLicenceItems(items?: string[]) {
+  const cleaned = cleanItems(items);
+
+  const genericLicenceWords = [
+    "driving licence",
+    "driving license",
+    "driver licence",
+    "driver license",
+  ];
+
+  const specificItems = cleaned.filter(
+    (item) =>
+      !genericLicenceWords.includes(item.toLowerCase())
+  );
+
+  return {
+    exists: cleaned.length > 0,
+    specificItems,
+  };
 }
 
 export default function Home() {
@@ -92,18 +113,12 @@ export default function Home() {
       mode === "tailor" &&
       (!cvText.trim() || !jobDescription.trim())
     ) {
-      setError(
-        "Paste your CV and the job description first."
-      );
-
+      setError("Paste your CV and the job description first.");
       return;
     }
 
     if (mode === "build" && !aboutMe.trim()) {
-      setError(
-        "Tell us a little about yourself first."
-      );
-
+      setError("Tell us a little about yourself first.");
       return;
     }
 
@@ -128,12 +143,24 @@ export default function Home() {
         }),
       });
 
-      const data = await response.json();
+      const rawBody = await response.text();
+
+      let data: Result & { error?: string } = {};
+
+      if (rawBody.trim()) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          throw new Error(
+            "We couldn't process your request. Please try again."
+          );
+        }
+      }
 
       if (!response.ok) {
         throw new Error(
           data.error ||
-            "We couldn't process your request."
+            "We couldn't process your request. Please try again."
         );
       }
 
@@ -162,6 +189,9 @@ export default function Home() {
 
   const displayedEmail =
     cv?.contact?.email || email;
+
+  const drivingLicence =
+    getDrivingLicenceItems(cv?.drivingLicence);
 
   return (
     <main className="appShell">
@@ -198,8 +228,7 @@ export default function Home() {
 
           <p className="introCopy">
             Already have a CV? Tailor it.
-            Don&apos;t have one? Build one in
-            minutes.
+            Don&apos;t have one? Build one in minutes.
           </p>
         </div>
 
@@ -257,8 +286,7 @@ export default function Home() {
                   </h2>
 
                   <p>
-                    Copy and paste the text from
-                    your CV
+                    Copy and paste the text from your CV
                   </p>
                 </div>
               </div>
@@ -281,8 +309,7 @@ export default function Home() {
                   </h2>
 
                   <p>
-                    Paste the job you want to
-                    apply for
+                    Paste the job you want to apply for
                   </p>
                 </div>
               </div>
@@ -309,9 +336,7 @@ export default function Home() {
                   </h2>
 
                   <p>
-                    Write normally. We&apos;ll
-                    turn it into a professional
-                    CV.
+                    Write normally. We&apos;ll turn it into a professional CV.
                   </p>
                 </div>
               </div>
@@ -324,12 +349,12 @@ export default function Home() {
                 }
                 placeholder={`Example:
 
-rabotil sum dostavki s kola nqkolko meseca
-raznasqh paketi po adresi
-imam knijka B
-govorq bulgarski i angliiski
-jiveq v Amsterdam
-sviknal sum da karam dosta prez denq`}
+cleaning 2 years
+offices
+english
+team work
+physical work
+can start soon`}
               />
 
               <div className="contactTitle">
@@ -338,8 +363,7 @@ sviknal sum da karam dosta prez denq`}
                 </h3>
 
                 <p>
-                  Optional — add what you want
-                  included in your CV.
+                  Optional — add what you want included in your CV.
                 </p>
               </div>
 
@@ -395,8 +419,7 @@ sviknal sum da karam dosta prez denq`}
           </button>
 
           <p className="truthNote">
-            We never invent experience, skills
-            or qualifications.
+            We never invent experience, skills or qualifications.
           </p>
 
           {error && (
@@ -425,8 +448,7 @@ sviknal sum da karam dosta prez denq`}
                 </h2>
 
                 <p>
-                  Review the full result before
-                  we enable downloads and payment.
+                  Review the full result before we enable downloads and payment.
                 </p>
               </div>
 
@@ -439,7 +461,6 @@ sviknal sum da karam dosta prez denq`}
 
                 <strong>
                   {result.matchScore ?? "—"}
-
                   <small>%</small>
                 </strong>
               </div>
@@ -545,8 +566,7 @@ sviknal sum da karam dosta prez denq`}
                           <div
                             key={`${job.title}-${index}`}
                             style={{
-                              marginBottom:
-                                "0.8rem",
+                              marginBottom: "0.8rem",
                             }}
                           >
                             {job.title && (
@@ -581,9 +601,7 @@ sviknal sum da karam dosta prez denq`}
                               ) => (
                                 <div
                                   className="cvBullet"
-                                  key={
-                                    bulletIndex
-                                  }
+                                  key={bulletIndex}
                                 >
                                   <span>
                                     •
@@ -636,19 +654,17 @@ sviknal sum da karam dosta prez denq`}
                   </section>
                 )}
 
-                {hasItems(
-                  cv.drivingLicence
-                ) && (
+                {drivingLicence.exists && (
                   <section className="cvSection">
                     <h2>
                       Driving Licence
                     </h2>
 
-                    <p className="languageLine">
-                      {cleanItems(
-                        cv.drivingLicence
-                      ).join(" · ")}
-                    </p>
+                    {drivingLicence.specificItems.length > 0 && (
+                      <p className="languageLine">
+                        {drivingLicence.specificItems.join(" · ")}
+                      </p>
+                    )}
                   </section>
                 )}
 
@@ -764,9 +780,7 @@ sviknal sum da karam dosta prez denq`}
             </h2>
 
             <p>
-              Professional CV, cover letter and
-              application insights built around
-              your real experience.
+              Professional CV, cover letter and application insights built around your real experience.
             </p>
           </div>
 
