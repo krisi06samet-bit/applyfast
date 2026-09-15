@@ -40,6 +40,7 @@ type Result = {
   missingKeywords?: string[];
   cv?: CvData;
   coverLetter?: string;
+  creditsRemaining?: number;
 };
 
 const placeholderValues = new Set([
@@ -107,6 +108,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [authStep, setAuthStep] = useState<"login" | "payment" | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
   const resultRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -121,6 +127,86 @@ export default function Home() {
 
     return () => window.clearTimeout(timer);
   }, [result]);
+
+  async function sendLoginLink() {
+    setAuthMessage("");
+
+    const normalizedEmail = authEmail.trim();
+
+    if (!normalizedEmail) {
+      setAuthMessage("Enter your email address.");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "Could not send the login email. Please try again."
+        );
+      }
+
+      setAuthMessage("Check your email. We sent you a secure login link.");
+    } catch (err) {
+      setAuthMessage(
+        err instanceof Error
+          ? err.message
+          : "Could not send the login email."
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function startCheckout() {
+    setAuthMessage("");
+    setAuthLoading(true);
+
+    try {
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setAuthStep("login");
+          throw new Error("Sign in first, then continue to payment.");
+        }
+
+        throw new Error(
+          data.error || "Could not start checkout. Please try again."
+        );
+      }
+
+      if (!data.url) {
+        throw new Error("Checkout link was not returned.");
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      setAuthMessage(
+        err instanceof Error
+          ? err.message
+          : "Could not start checkout."
+      );
+      setAuthLoading(false);
+    }
+  }
 
   async function generate() {
     setError("");
@@ -162,7 +248,11 @@ export default function Home() {
 
       const rawBody = await response.text();
 
-      let data: Result & { error?: string } = {};
+      let data: Result & {
+        error?: string;
+        message?: string;
+        credits?: number;
+      } = {};
 
       if (rawBody.trim()) {
         try {
@@ -174,13 +264,27 @@ export default function Home() {
         }
       }
 
+      if (response.status === 401) {
+        setAuthStep("login");
+        setAuthMessage("");
+        return;
+      }
+
+      if (response.status === 402) {
+        setAuthStep("payment");
+        setAuthMessage("");
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(
-          data.error ||
+          data.message ||
+            data.error ||
             "We couldn't process your request. Please try again."
         );
       }
 
+      setAuthStep(null);
       setResult(data);
     } catch (err) {
       setError(
@@ -197,6 +301,8 @@ export default function Home() {
     setMode(newMode);
     setResult(null);
     setError("");
+    setAuthStep(null);
+    setAuthMessage("");
   }
 
   const cv = result?.cv;
@@ -447,6 +553,111 @@ can start soon`}
               {error}
             </div>
           )}
+
+          {authStep === "login" && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: "16px",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <h3 style={{ margin: 0 }}>Sign in to continue</h3>
+
+              <p style={{ marginTop: "0.45rem", opacity: 0.78 }}>
+                Enter your email. We&apos;ll send you a secure login link — no password.
+              </p>
+
+              <div
+                style={{
+                  display: "grid",
+                  gap: "0.75rem",
+                  marginTop: "0.9rem",
+                }}
+              >
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+
+                <button
+                  type="button"
+                  className="generateButton"
+                  onClick={sendLoginLink}
+                  disabled={authLoading}
+                >
+                  <span>
+                    {authLoading ? "Sending login link..." : "Email me a login link"}
+                  </span>
+                  <span>→</span>
+                </button>
+              </div>
+
+              {authMessage && (
+                <p
+                  style={{
+                    marginTop: "0.8rem",
+                    marginBottom: 0,
+                  }}
+                >
+                  {authMessage}
+                </p>
+              )}
+            </div>
+          )}
+
+          {authStep === "payment" && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                border: "1px solid rgba(255,255,255,0.14)",
+                borderRadius: "16px",
+                background: "rgba(255,255,255,0.04)",
+              }}
+            >
+              <p className="eyebrow" style={{ marginTop: 0 }}>
+                READY TO CONTINUE
+              </p>
+
+              <h3 style={{ marginTop: "0.3rem" }}>
+                Get 10 application credits
+              </h3>
+
+              <p style={{ opacity: 0.78 }}>
+                One-time payment of €6.99. Each successful CV uses 1 credit.
+                AI errors do not use a credit.
+              </p>
+
+              <button
+                type="button"
+                className="generateButton"
+                onClick={startCheckout}
+                disabled={authLoading}
+              >
+                <span>
+                  {authLoading ? "Opening checkout..." : "Get 10 credits — €6.99"}
+                </span>
+                <span>→</span>
+              </button>
+
+              {authMessage && (
+                <p
+                  style={{
+                    marginTop: "0.8rem",
+                    marginBottom: 0,
+                  }}
+                >
+                  {authMessage}
+                </p>
+              )}
+            </div>
+          )}
         </section>
 
         {result && cv && (
@@ -457,7 +668,7 @@ can start soon`}
             <div className="resultHeader">
               <div>
                 <p className="eyebrow">
-                  FULL RESULT · TEST MODE
+                  APPLICATION READY
                 </p>
 
                 <h2>
@@ -465,7 +676,7 @@ can start soon`}
                 </h2>
 
                 <p>
-                  Review the full result before we enable downloads and payment.
+                  Review your tailored CV and cover letter below.
                 </p>
               </div>
 
