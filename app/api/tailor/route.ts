@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
@@ -93,7 +94,8 @@ export async function POST(request: Request) {
   try {
     if (
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.SUPABASE_ANON_KEY
+      !process.env.SUPABASE_ANON_KEY ||
+      !process.env.SUPABASE_SECRET_KEY
     ) {
       return Response.json(
         { error: "Supabase is not configured." },
@@ -103,7 +105,7 @@ export async function POST(request: Request) {
 
     const cookieStore = await cookies();
 
-    const supabase = createServerClient(
+    const authSupabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.SUPABASE_ANON_KEY,
       {
@@ -120,48 +122,41 @@ export async function POST(request: Request) {
       }
     );
 
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SECRET_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
     const {
       data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    } = await authSupabase.auth.getUser();
 
-    if (userError || !user) {
-      return Response.json(
-        {
-          error: "LOGIN_REQUIRED",
-          message: "Sign in to continue.",
-        },
-        { status: 401 }
-      );
-    }
+    let currentCredits = 0;
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("credits")
-      .eq("id", user.id)
-      .single();
+    if (user) {
+      const { data: profile, error: profileError } = await adminSupabase
+        .from("profiles")
+        .select("credits")
+        .eq("id", user.id)
+        .maybeSingle();
 
-    if (profileError) {
-      console.error("ApplyFast profile error:", profileError);
+      if (profileError) {
+        console.error("ApplyFast profile lookup error:", profileError);
 
-      return Response.json(
-        { error: "Could not load your credits." },
-        { status: 500 }
-      );
-    }
+        return Response.json(
+          { error: "Could not load your credits." },
+          { status: 500 }
+        );
+      }
 
-    const currentCredits =
-      typeof profile?.credits === "number" ? profile.credits : 0;
-
-    if (currentCredits < 1) {
-      return Response.json(
-        {
-          error: "PAYMENT_REQUIRED",
-          message: "You need credits to generate an application.",
-          credits: 0,
-        },
-        { status: 402 }
-      );
+      currentCredits =
+        typeof profile?.credits === "number" ? profile.credits : 0;
     }
 
     if (!process.env.OPENAI_API_KEY) {
@@ -687,39 +682,68 @@ ${aboutMe}
 
     const result = JSON.parse(outputText);
 
-    const nextCredits = currentCredits - 1;
+    if (user && currentCredits > 0) {
+      const nextCredits = currentCredits - 1;
 
-    const { data: updatedProfile, error: creditError } = await supabase
-      .from("profiles")
-      .update({
-        credits: nextCredits,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", user.id)
-      .eq("credits", currentCredits)
-      .select("credits")
-      .maybeSingle();
+      const { data: updatedProfile, error: creditError } = await adminSupabase
+        .from("profiles")
+        .update({
+          credits: nextCredits,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id)
+        .eq("credits", currentCredits)
+        .select("credits")
+        .maybeSingle();
 
-    if (creditError) {
-      console.error("ApplyFast credit update error:", creditError);
+      if (creditError) {
+        console.error("ApplyFast credit update error:", creditError);
 
-      return Response.json(
-        { error: "Could not update your credits. Please try again." },
-        { status: 500 }
-      );
+        return Response.json(
+          { error: "Could not update your credits. Please try again." },
+          { status: 500 }
+        );
+      }
+
+      if (!updatedProfile) {
+        return Response.json(
+          {
+            error: "CREDIT_CONFLICT",
+            message: "Your credits changed. Please try again.",
+          },
+          { status: 409 }
+        );
+      }
+
+      await adminSupabase.from("credit_transactions").insert({
+        user_id: user.id,
+        type: "generation",
+        amount: -1,
+      });
+
+      return Response.json({
+        matchScore: Math.max(
+          0,
+          Math.min(
+            100,
+            Math.round(result.matchScore || 0)
+          )
+        ),
+
+        missingKeywords: Array.isArray(result.missingKeywords)
+          ? result.missingKeywords.slice(0, 3)
+          : [],
+
+        cv: cleanCv(result.cv),
+
+        coverLetter: cleanOutputString(result.coverLetter),
+
+        locked: false,
+        creditsRemaining: updatedProfile.credits,
+      });
     }
 
-    if (!updatedProfile) {
-      return Response.json(
-        {
-          error: "CREDIT_CONFLICT",
-          message: "Your credits changed. Please try again.",
-        },
-        { status: 409 }
-      );
-    }
-
-    return Response.json({
+    const lockedResult = {
       matchScore: Math.max(
         0,
         Math.min(
@@ -735,8 +759,41 @@ ${aboutMe}
       cv: cleanCv(result.cv),
 
       coverLetter: cleanOutputString(result.coverLetter),
+    };
 
-      creditsRemaining: updatedProfile.credits,
+    const { data: generation, error: generationError } =
+      await adminSupabase
+        .from("generations")
+        .insert({
+          user_id: user?.id ?? null,
+          email: user?.email?.toLowerCase() ?? null,
+          result: lockedResult,
+          status: "locked",
+        })
+        .select("id")
+        .single();
+
+    if (generationError || !generation?.id) {
+      console.error("ApplyFast generation save error:", generationError);
+
+      return Response.json(
+        { error: "Could not save your application. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    return Response.json({
+      locked: true,
+      generationId: generation.id,
+      previewName:
+        lockedResult.cv.name ||
+        clean(fullName) ||
+        "Your CV",
+      previewEmail:
+        lockedResult.cv.contact.email ||
+        clean(email) ||
+        "",
+      matchScore: lockedResult.matchScore,
     });
   } catch (error) {
     console.error("ApplyFast generation error:", error);
