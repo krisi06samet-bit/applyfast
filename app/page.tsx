@@ -71,6 +71,27 @@ function cleanItems(items?: string[]) {
     .filter(Boolean);
 }
 
+
+function extractEmailFromText(text: string) {
+  const match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return match?.[0] || "";
+}
+
+function extractNameFromText(text: string) {
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+
+  if (!firstLine) return "";
+
+  if (firstLine.includes("@") || /\d{4,}/.test(firstLine)) {
+    return "";
+  }
+
+  return firstLine.slice(0, 80);
+}
+
 function getDrivingLicenceItems(items?: string[]) {
   const cleaned = cleanItems(items);
 
@@ -112,8 +133,51 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState("");
 
   const resultRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    try {
+      const savedDraft = window.sessionStorage.getItem("applyfast_draft");
+
+      if (savedDraft) {
+        const draft = JSON.parse(savedDraft);
+
+        if (draft.mode === "tailor" || draft.mode === "build") {
+          setMode(draft.mode);
+        }
+
+        if (typeof draft.cvText === "string") setCvText(draft.cvText);
+        if (typeof draft.jobDescription === "string") {
+          setJobDescription(draft.jobDescription);
+        }
+        if (typeof draft.aboutMe === "string") setAboutMe(draft.aboutMe);
+        if (typeof draft.fullName === "string") setFullName(draft.fullName);
+        if (typeof draft.email === "string") setEmail(draft.email);
+        if (typeof draft.phone === "string") setPhone(draft.phone);
+      }
+
+      const params = new URLSearchParams(window.location.search);
+
+      if (params.get("payment") === "success") {
+        setPaymentNotice(
+          "Payment successful. Your 10 credits are ready. Press the button below to generate your unlocked CV."
+        );
+        setAuthStep(null);
+      }
+
+      if (params.get("payment") === "cancel") {
+        setPaymentNotice("Payment was cancelled. Nothing was charged.");
+      }
+
+      if (params.get("auth_error")) {
+        setError("The login link could not be completed. Please try again.");
+      }
+    } catch {
+      // Keep the app usable even if browser storage is unavailable.
+    }
+  }, []);
 
   useEffect(() => {
     if (!result || !resultRef.current) return;
@@ -127,6 +191,25 @@ export default function Home() {
 
     return () => window.clearTimeout(timer);
   }, [result]);
+
+  function saveDraft() {
+    try {
+      window.sessionStorage.setItem(
+        "applyfast_draft",
+        JSON.stringify({
+          mode,
+          cvText,
+          jobDescription,
+          aboutMe,
+          fullName,
+          email,
+          phone,
+        })
+      );
+    } catch {
+      // Ignore storage errors.
+    }
+  }
 
   async function sendLoginLink() {
     setAuthMessage("");
@@ -197,6 +280,7 @@ export default function Home() {
         throw new Error("Checkout link was not returned.");
       }
 
+      saveDraft();
       window.location.href = data.url;
     } catch (err) {
       setAuthMessage(
@@ -225,6 +309,8 @@ export default function Home() {
       return;
     }
 
+    saveDraft();
+    setPaymentNotice("");
     setLoading(true);
 
     try {
@@ -285,7 +371,14 @@ export default function Home() {
       }
 
       setAuthStep(null);
+      setPaymentNotice("");
       setResult(data);
+
+      try {
+        window.sessionStorage.removeItem("applyfast_draft");
+      } catch {
+        // Ignore storage errors.
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -315,6 +408,193 @@ export default function Home() {
 
   const drivingLicence =
     getDrivingLicenceItems(cv?.drivingLicence);
+
+  const previewName =
+    cleanText(fullName) ||
+    (mode === "tailor" ? extractNameFromText(cvText) : "") ||
+    "Your Name";
+
+  const previewEmail =
+    cleanText(email) ||
+    (mode === "tailor" ? extractEmailFromText(cvText) : "") ||
+    "your@email.com";
+
+  function downloadCvPdf() {
+    if (!cv) return;
+
+    const escapeHtml = (value: string) =>
+      value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+    const list = (items?: string[]) =>
+      cleanItems(items)
+        .map((item) => `<li>${escapeHtml(item)}</li>`)
+        .join("");
+
+    const work = Array.isArray(cv.workExperience)
+      ? cv.workExperience
+          .map(
+            (job) => `
+              <section>
+                ${
+                  cleanText(job.title)
+                    ? `<h3>${escapeHtml(cleanText(job.title))}</h3>`
+                    : ""
+                }
+                ${
+                  cleanText(job.employer)
+                    ? `<p><strong>${escapeHtml(cleanText(job.employer))}</strong></p>`
+                    : ""
+                }
+                ${
+                  cleanText(job.duration)
+                    ? `<p>${escapeHtml(cleanText(job.duration))}</p>`
+                    : ""
+                }
+                ${
+                  cleanItems(job.bullets).length
+                    ? `<ul>${list(job.bullets)}</ul>`
+                    : ""
+                }
+              </section>
+            `
+          )
+          .join("")
+      : "";
+
+    const popup = window.open("", "_blank");
+
+    if (!popup) {
+      setError("Please allow pop-ups, then try Download CV again.");
+      return;
+    }
+
+    popup.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(cleanText(cv.name) || previewName)} - CV</title>
+          <style>
+            body {
+              font-family: Arial, Helvetica, sans-serif;
+              max-width: 820px;
+              margin: 40px auto;
+              padding: 0 28px;
+              color: #111;
+              line-height: 1.5;
+            }
+            h1 { margin-bottom: 6px; }
+            h2 {
+              margin-top: 28px;
+              padding-bottom: 6px;
+              border-bottom: 1px solid #ddd;
+              font-size: 18px;
+            }
+            h3 { margin-bottom: 4px; font-size: 16px; }
+            p { margin: 4px 0; }
+            ul { margin-top: 8px; }
+            .contact { margin-bottom: 24px; color: #444; }
+            @media print {
+              body { margin: 0 auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(cleanText(cv.name) || previewName)}</h1>
+
+          <div class="contact">
+            ${displayedEmail ? escapeHtml(displayedEmail) : ""}
+            ${displayedEmail && displayedPhone ? " · " : ""}
+            ${displayedPhone ? escapeHtml(displayedPhone) : ""}
+            ${
+              cleanText(cv.contact.location)
+                ? ` · ${escapeHtml(cleanText(cv.contact.location))}`
+                : ""
+            }
+          </div>
+
+          ${
+            cleanText(cv.profile)
+              ? `<h2>Professional Profile</h2><p>${escapeHtml(
+                  cleanText(cv.profile)
+                )}</p>`
+              : ""
+          }
+
+          ${work ? `<h2>Work Experience</h2>${work}` : ""}
+
+          ${
+            cleanItems(cv.skills).length
+              ? `<h2>Skills</h2><ul>${list(cv.skills)}</ul>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.languages).length
+              ? `<h2>Languages</h2><p>${escapeHtml(
+                  cleanItems(cv.languages).join(" · ")
+                )}</p>`
+              : ""
+          }
+
+          ${
+            drivingLicence.exists
+              ? `<h2>Driving Licence</h2><p>${escapeHtml(
+                  drivingLicence.specificItems.length
+                    ? drivingLicence.specificItems.join(" · ")
+                    : "Driving licence"
+                )}</p>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.vca).length
+              ? `<h2>VCA</h2><p>${escapeHtml(
+                  cleanItems(cv.vca).join(" · ")
+                )}</p>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.documents).length
+              ? `<h2>Documents</h2><ul>${list(cv.documents)}</ul>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.certificates).length
+              ? `<h2>Certificates</h2><ul>${list(cv.certificates)}</ul>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.education).length
+              ? `<h2>Education</h2><ul>${list(cv.education)}</ul>`
+              : ""
+          }
+
+          ${
+            cleanItems(cv.additionalInformation).length
+              ? `<h2>Additional Information</h2><ul>${list(
+                  cv.additionalInformation
+                )}</ul>`
+              : ""
+          }
+
+          <script>
+            window.onload = () => window.print();
+          </script>
+        </body>
+      </html>
+    `);
+
+    popup.document.close();
+  }
 
   return (
     <main className="appShell">
@@ -354,6 +634,21 @@ export default function Home() {
             Don&apos;t have one? Build one in minutes.
           </p>
         </div>
+
+        {paymentNotice && (
+          <div
+            style={{
+              margin: "0 auto 1rem",
+              maxWidth: "760px",
+              padding: "0.9rem 1rem",
+              borderRadius: "14px",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.05)",
+            }}
+          >
+            {paymentNotice}
+          </div>
+        )}
 
         <div className="modeSelector">
           <button
@@ -612,50 +907,110 @@ can start soon`}
           )}
 
           {authStep === "payment" && (
-            <div
-              style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                border: "1px solid rgba(255,255,255,0.14)",
-                borderRadius: "16px",
-                background: "rgba(255,255,255,0.04)",
-              }}
-            >
-              <p className="eyebrow" style={{ marginTop: 0 }}>
-                READY TO CONTINUE
-              </p>
-
-              <h3 style={{ marginTop: "0.3rem" }}>
-                Get 10 application credits
-              </h3>
-
-              <p style={{ opacity: 0.78 }}>
-                One-time payment of €6.99. Each successful CV uses 1 credit.
-                AI errors do not use a credit.
-              </p>
-
-              <button
-                type="button"
-                className="generateButton"
-                onClick={startCheckout}
-                disabled={authLoading}
+            <div style={{ marginTop: "1rem" }}>
+              <div
+                style={{
+                  position: "relative",
+                  overflow: "hidden",
+                  minHeight: "520px",
+                  borderRadius: "18px",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "#fff",
+                  color: "#111",
+                  padding: "2rem",
+                }}
               >
-                <span>
-                  {authLoading ? "Opening checkout..." : "Get 10 credits — €6.99"}
-                </span>
-                <span>→</span>
-              </button>
+                <div style={{ position: "relative", zIndex: 1 }}>
+                  <h2 style={{ marginBottom: "0.25rem" }}>{previewName}</h2>
+                  <p style={{ marginTop: 0, opacity: 0.7 }}>{previewEmail}</p>
 
-              {authMessage && (
-                <p
+                  <div
+                    style={{
+                      filter: "blur(7px)",
+                      userSelect: "none",
+                      opacity: 0.55,
+                      marginTop: "2rem",
+                    }}
+                    aria-hidden="true"
+                  >
+                    <h3>Professional Profile</h3>
+                    <p>
+                      Experienced and reliable professional with practical
+                      experience and a strong work ethic. Skilled in daily
+                      operations, teamwork and completing tasks efficiently.
+                    </p>
+
+                    <h3 style={{ marginTop: "2rem" }}>Work Experience</h3>
+                    <p>
+                      Professional experience tailored to the selected vacancy,
+                      including relevant responsibilities and transferable skills.
+                    </p>
+                    <p>
+                      Key achievements and job-specific experience are included
+                      in the unlocked version.
+                    </p>
+
+                    <h3 style={{ marginTop: "2rem" }}>Skills</h3>
+                    <p>
+                      Communication · Teamwork · Reliability · Job-specific skills
+                    </p>
+                  </div>
+                </div>
+
+                <div
                   style={{
-                    marginTop: "0.8rem",
-                    marginBottom: 0,
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 2,
+                    display: "grid",
+                    placeItems: "center",
+                    padding: "1.25rem",
+                    background:
+                      "linear-gradient(to bottom, rgba(255,255,255,0.06), rgba(8,8,8,0.70))",
                   }}
                 >
-                  {authMessage}
-                </p>
-              )}
+                  <div
+                    style={{
+                      width: "min(92%, 430px)",
+                      padding: "1.25rem",
+                      borderRadius: "18px",
+                      background: "rgba(10,10,10,0.95)",
+                      color: "#fff",
+                      textAlign: "center",
+                      boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    <p className="eyebrow" style={{ marginTop: 0 }}>
+                      YOUR CV IS READY TO UNLOCK
+                    </p>
+
+                    <h3 style={{ margin: "0.4rem 0" }}>
+                      Unlock the full CV + 10 applications
+                    </h3>
+
+                    <p style={{ opacity: 0.78 }}>
+                      One-time payment of €6.99. Your full generated CV stays
+                      locked until you have credits.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="generateButton"
+                      onClick={startCheckout}
+                      disabled={authLoading}
+                    >
+                      <span>
+                        {authLoading ? "Opening checkout..." : "Unlock — €6.99"}
+                      </span>
+                      <span>→</span>
+                    </button>
+
+                    {authMessage && (
+                      <p style={{ marginBottom: 0 }}>{authMessage}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -692,6 +1047,32 @@ can start soon`}
                   <small>%</small>
                 </strong>
               </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.75rem",
+                alignItems: "center",
+                marginBottom: "1rem",
+              }}
+            >
+              <button
+                type="button"
+                className="generateButton"
+                onClick={downloadCvPdf}
+                style={{ width: "auto", minWidth: "220px" }}
+              >
+                <span>Download CV as PDF</span>
+                <span>↓</span>
+              </button>
+
+              {typeof result.creditsRemaining === "number" && (
+                <span style={{ opacity: 0.75 }}>
+                  {result.creditsRemaining} application credits remaining
+                </span>
+              )}
             </div>
 
             {hasItems(
