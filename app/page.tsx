@@ -1,4 +1,4 @@
-"use client";
+
 
 import { useEffect, useRef, useState } from "react";
 
@@ -145,6 +145,10 @@ export default function Home() {
   const [paymentNotice, setPaymentNotice] = useState("");
   const [unlockLoading, setUnlockLoading] = useState(false);
 
+  const [accountEmail, setAccountEmail] = useState("");
+  const [accountCredits, setAccountCredits] = useState<number | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+
   const [returningOpen, setReturningOpen] = useState(false);
   const [returningEmail, setReturningEmail] = useState("");
   const [returningLoading, setReturningLoading] = useState(false);
@@ -153,6 +157,118 @@ export default function Home() {
   const resultRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    async function loadAccount() {
+      try {
+        const response = await fetch("/api/account", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok && data?.authenticated) {
+          setAccountEmail(
+            typeof data.email === "string" ? data.email : ""
+          );
+
+          setAccountCredits(
+            typeof data.credits === "number" ? data.credits : 0
+          );
+        } else {
+          setAccountEmail("");
+          setAccountCredits(null);
+        }
+      } catch {
+        setAccountEmail("");
+        setAccountCredits(null);
+      } finally {
+        setAccountLoading(false);
+      }
+    }
+
+    async function unlockGeneration(
+      generationId: string,
+      sessionId: string,
+      restoring: boolean
+    ) {
+      setUnlockLoading(true);
+
+      if (!restoring) {
+        setPaymentNotice("Payment confirmed. Unlocking your CV...");
+      }
+
+      try {
+        const response = await fetch("/api/unlock", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            generationId,
+            sessionId,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              data.error ||
+              "Payment succeeded, but we could not unlock the CV yet."
+          );
+        }
+
+        setResult(data);
+        setLockedGenerationId("");
+        setLockedPreviewName("");
+        setLockedPreviewEmail("");
+        setLockedMatchScore(null);
+        setPaymentMessage("");
+
+        if (typeof data.accountEmail === "string") {
+          setAccountEmail(data.accountEmail);
+        }
+
+        if (typeof data.creditsRemaining === "number") {
+          setAccountCredits(data.creditsRemaining);
+        }
+
+        setPaymentNotice(
+          restoring
+            ? "Your last unlocked CV has been restored."
+            : typeof data.creditsRemaining === "number"
+              ? `Unlocked. ${data.creditsRemaining} application credits remaining.`
+              : "Your CV is unlocked."
+        );
+
+        /*
+          Keep ONLY the Stripe session + generation id locally.
+          The full paid CV stays in Supabase and is fetched again securely.
+        */
+        window.localStorage.setItem(
+          "applyfast_last_unlocked",
+          JSON.stringify({
+            generationId,
+            sessionId,
+          })
+        );
+
+        window.sessionStorage.removeItem("applyfast_locked_preview");
+        window.sessionStorage.removeItem("applyfast_draft");
+
+        if (!restoring) {
+          window.history.replaceState(
+            {},
+            "",
+            window.location.pathname
+          );
+        }
+      } finally {
+        setUnlockLoading(false);
+      }
+    }
+
     async function restoreAndUnlock() {
       try {
         const savedDraft = window.sessionStorage.getItem("applyfast_draft");
@@ -191,20 +307,14 @@ export default function Home() {
 
           if (typeof locked.previewEmail === "string") {
             setLockedPreviewEmail(locked.previewEmail);
-
-            if (
-              /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-                locked.previewEmail
-              )
-            ) {
-              setPaymentEmail(locked.previewEmail);
-            }
           }
 
           if (typeof locked.matchScore === "number") {
             setLockedMatchScore(locked.matchScore);
           }
         }
+
+        await loadAccount();
 
         const params = new URLSearchParams(window.location.search);
         const payment = params.get("payment");
@@ -217,61 +327,49 @@ export default function Home() {
         }
 
         if (
-          payment !== "success" ||
-          !sessionId ||
-          !generationId
+          payment === "success" &&
+          sessionId &&
+          generationId
         ) {
+          await unlockGeneration(
+            generationId,
+            sessionId,
+            false
+          );
           return;
         }
 
-        setUnlockLoading(true);
-        setPaymentNotice("Payment confirmed. Unlocking your CV...");
-
-        const response = await fetch("/api/unlock", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            generationId,
-            sessionId,
-          }),
-        });
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              data.error ||
-              "Payment succeeded, but we could not unlock the CV yet."
-          );
-        }
-
-        setResult(data);
-        setLockedGenerationId("");
-        setLockedPreviewName("");
-        setLockedPreviewEmail("");
-        setLockedMatchScore(null);
-        setPaymentMessage("");
-        setPaymentNotice(
-          typeof data.creditsRemaining === "number"
-            ? `Unlocked. ${data.creditsRemaining} application credits remaining.`
-            : "Your CV is unlocked."
+        /*
+          Fix for refresh, browser crash, accidental navigation, etc.
+          If the user already paid, restore the last unlocked CV from
+          Supabase instead of forcing them to start over.
+        */
+        const lastUnlockedRaw = window.localStorage.getItem(
+          "applyfast_last_unlocked"
         );
 
-        window.sessionStorage.removeItem("applyfast_locked_preview");
-        window.sessionStorage.removeItem("applyfast_draft");
+        if (!lastUnlockedRaw) {
+          return;
+        }
 
-        window.history.replaceState({}, "", window.location.pathname);
+        const lastUnlocked = JSON.parse(lastUnlockedRaw);
+
+        if (
+          typeof lastUnlocked.generationId === "string" &&
+          typeof lastUnlocked.sessionId === "string"
+        ) {
+          await unlockGeneration(
+            lastUnlocked.generationId,
+            lastUnlocked.sessionId,
+            true
+          );
+        }
       } catch (err) {
         setError(
           err instanceof Error
             ? err.message
-            : "Could not unlock your CV."
+            : "Could not restore your ApplyFast session."
         );
-      } finally {
-        setUnlockLoading(false);
       }
     }
 
@@ -358,7 +456,7 @@ export default function Home() {
       }
 
       setReturningMessage(
-        "Check your email and use the ApplyFast sign-in link. Then come back here and use your saved credits."
+        "Check your email and open the ApplyFast sign-in link. When you return, your saved credit balance will appear at the top."
       );
     } catch (err) {
       setReturningMessage(
@@ -544,6 +642,14 @@ export default function Home() {
       setLockedPreviewEmail("");
       setLockedMatchScore(null);
       setResult(data);
+
+      if (typeof data.creditsRemaining === "number") {
+        setAccountCredits(data.creditsRemaining);
+      }
+
+      if (typeof data.accountEmail === "string") {
+        setAccountEmail(data.accountEmail);
+      }
 
       try {
         window.sessionStorage.removeItem("applyfast_locked_preview");
@@ -809,6 +915,21 @@ export default function Home() {
             justifyContent: "flex-end",
           }}
         >
+          {!accountLoading && accountCredits !== null && (
+            <span
+              style={{
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.06)",
+                borderRadius: "999px",
+                padding: "0.55rem 0.8rem",
+                whiteSpace: "nowrap",
+              }}
+              title={accountEmail || undefined}
+            >
+              {accountCredits} credits remaining
+            </span>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -1383,9 +1504,9 @@ can start soon`}
               )}
             </div>
 
-            {result.accountEmail &&
-              typeof result.creditsRemaining === "number" &&
-              result.creditsRemaining > 0 && (
+            {(result.accountEmail || accountEmail) &&
+              accountCredits !== null &&
+              accountCredits > 0 && (
                 <p
                   style={{
                     marginTop: "-0.35rem",
@@ -1393,7 +1514,7 @@ can start soon`}
                     opacity: 0.72,
                   }}
                 >
-                  Your remaining credits are saved to {result.accountEmail}.
+                  Your remaining credits are saved to {result.accountEmail || accountEmail}.
                   Next time, use “Already have credits? Sign in”.
                 </p>
               )}
