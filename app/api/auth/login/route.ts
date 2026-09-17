@@ -6,7 +6,12 @@ export async function POST(request: Request) {
   try {
     const { email } = await request.json();
 
-    if (!email || typeof email !== "string") {
+    const normalizedEmail =
+      typeof email === "string"
+        ? email.trim().toLowerCase()
+        : "";
+
+    if (!normalizedEmail) {
       return Response.json(
         { error: "Enter your email address." },
         { status: 400 }
@@ -28,30 +33,37 @@ export async function POST(request: Request) {
       process.env.SUPABASE_ANON_KEY
     );
 
+    const origin = new URL(request.url).origin;
+
     const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
+      email: normalizedEmail,
       options: {
-        shouldCreateUser: true,
+        emailRedirectTo: `${origin}/auth/callback`,
+        shouldCreateUser: false,
       },
     });
 
     if (error) {
-      console.error("ApplyFast OTP send error:", error);
+      console.error("ApplyFast returning sign-in error:", error);
 
       return Response.json(
-        { error: "Could not send the login code. Please try again." },
-        { status: 500 }
+        {
+          error:
+            "We could not send a sign-in email for this account. Make sure you use the same email you paid with.",
+        },
+        { status: 400 }
       );
     }
 
     return Response.json({
       success: true,
+      message: "Check your email for the ApplyFast sign-in link.",
     });
   } catch (error) {
-    console.error("ApplyFast OTP route error:", error);
+    console.error("ApplyFast returning sign-in route error:", error);
 
     return Response.json(
-      { error: "Could not send the login code." },
+      { error: "Could not send the sign-in email." },
       { status: 500 }
     );
   }
