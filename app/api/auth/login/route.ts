@@ -28,33 +28,30 @@ export async function POST(request: Request) {
       process.env.SUPABASE_ANON_KEY
     );
 
-    const origin = new URL(request.url).origin;
-
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: `${origin}/auth/callback`,
+        shouldCreateUser: true,
       },
     });
 
     if (error) {
-      console.error("ApplyFast login error:", error);
+      console.error("ApplyFast OTP send error:", error);
 
       return Response.json(
-        { error: "Could not send the login email. Please try again." },
+        { error: "Could not send the login code. Please try again." },
         { status: 500 }
       );
     }
 
     return Response.json({
       success: true,
-      message: "Check your email for the login link.",
     });
   } catch (error) {
-    console.error("ApplyFast login route error:", error);
+    console.error("ApplyFast OTP route error:", error);
 
     return Response.json(
-      { error: "Could not send the login email." },
+      { error: "Could not send the login code." },
       { status: 500 }
     );
   }
