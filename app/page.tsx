@@ -40,7 +40,12 @@ type Result = {
   missingKeywords?: string[];
   cv?: CvData;
   coverLetter?: string;
-  creditsRemaining?: number;
+  creditsRemaining?: number | null;
+  locked?: boolean;
+  generationId?: string;
+  previewName?: string;
+  previewEmail?: string;
+  accountEmail?: string;
 };
 
 const placeholderValues = new Set([
@@ -129,56 +134,148 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [authStep, setAuthStep] = useState<"login" | "payment" | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authCode, setAuthCode] = useState("");
-  const [authCodeSent, setAuthCodeSent] = useState(false);
-  const [authMessage, setAuthMessage] = useState("");
-  const [authLoading, setAuthLoading] = useState(false);
+  const [lockedGenerationId, setLockedGenerationId] = useState("");
+  const [lockedPreviewName, setLockedPreviewName] = useState("");
+  const [lockedPreviewEmail, setLockedPreviewEmail] = useState("");
+  const [lockedMatchScore, setLockedMatchScore] = useState<number | null>(null);
+
+  const [paymentEmail, setPaymentEmail] = useState("");
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState("");
   const [paymentNotice, setPaymentNotice] = useState("");
+  const [unlockLoading, setUnlockLoading] = useState(false);
+
+  const [returningOpen, setReturningOpen] = useState(false);
+  const [returningEmail, setReturningEmail] = useState("");
+  const [returningLoading, setReturningLoading] = useState(false);
+  const [returningMessage, setReturningMessage] = useState("");
 
   const resultRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    try {
-      const savedDraft = window.sessionStorage.getItem("applyfast_draft");
+    async function restoreAndUnlock() {
+      try {
+        const savedDraft = window.sessionStorage.getItem("applyfast_draft");
 
-      if (savedDraft) {
-        const draft = JSON.parse(savedDraft);
+        if (savedDraft) {
+          const draft = JSON.parse(savedDraft);
 
-        if (draft.mode === "tailor" || draft.mode === "build") {
-          setMode(draft.mode);
+          if (draft.mode === "tailor" || draft.mode === "build") {
+            setMode(draft.mode);
+          }
+
+          if (typeof draft.cvText === "string") setCvText(draft.cvText);
+          if (typeof draft.jobDescription === "string") {
+            setJobDescription(draft.jobDescription);
+          }
+          if (typeof draft.aboutMe === "string") setAboutMe(draft.aboutMe);
+          if (typeof draft.fullName === "string") setFullName(draft.fullName);
+          if (typeof draft.email === "string") setEmail(draft.email);
+          if (typeof draft.phone === "string") setPhone(draft.phone);
         }
 
-        if (typeof draft.cvText === "string") setCvText(draft.cvText);
-        if (typeof draft.jobDescription === "string") {
-          setJobDescription(draft.jobDescription);
-        }
-        if (typeof draft.aboutMe === "string") setAboutMe(draft.aboutMe);
-        if (typeof draft.fullName === "string") setFullName(draft.fullName);
-        if (typeof draft.email === "string") setEmail(draft.email);
-        if (typeof draft.phone === "string") setPhone(draft.phone);
-      }
-
-      const params = new URLSearchParams(window.location.search);
-
-      if (params.get("payment") === "success") {
-        setPaymentNotice(
-          "Payment successful. Your 10 credits are ready. Press the button below to generate your unlocked CV."
+        const savedLocked = window.sessionStorage.getItem(
+          "applyfast_locked_preview"
         );
-        setAuthStep(null);
-      }
 
-      if (params.get("payment") === "cancel") {
-        setPaymentNotice("Payment was cancelled. Nothing was charged.");
-      }
+        if (savedLocked) {
+          const locked = JSON.parse(savedLocked);
 
-      if (params.get("auth_error")) {
-        setError("The login link could not be completed. Please try again.");
+          if (typeof locked.generationId === "string") {
+            setLockedGenerationId(locked.generationId);
+          }
+
+          if (typeof locked.previewName === "string") {
+            setLockedPreviewName(locked.previewName);
+          }
+
+          if (typeof locked.previewEmail === "string") {
+            setLockedPreviewEmail(locked.previewEmail);
+
+            if (
+              /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                locked.previewEmail
+              )
+            ) {
+              setPaymentEmail(locked.previewEmail);
+            }
+          }
+
+          if (typeof locked.matchScore === "number") {
+            setLockedMatchScore(locked.matchScore);
+          }
+        }
+
+        const params = new URLSearchParams(window.location.search);
+        const payment = params.get("payment");
+        const sessionId = params.get("session_id");
+        const generationId = params.get("generation_id");
+
+        if (payment === "cancel") {
+          setPaymentNotice("Payment was cancelled. Nothing was charged.");
+          return;
+        }
+
+        if (
+          payment !== "success" ||
+          !sessionId ||
+          !generationId
+        ) {
+          return;
+        }
+
+        setUnlockLoading(true);
+        setPaymentNotice("Payment confirmed. Unlocking your CV...");
+
+        const response = await fetch("/api/unlock", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            generationId,
+            sessionId,
+          }),
+        });
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              data.error ||
+              "Payment succeeded, but we could not unlock the CV yet."
+          );
+        }
+
+        setResult(data);
+        setLockedGenerationId("");
+        setLockedPreviewName("");
+        setLockedPreviewEmail("");
+        setLockedMatchScore(null);
+        setPaymentMessage("");
+        setPaymentNotice(
+          typeof data.creditsRemaining === "number"
+            ? `Unlocked. ${data.creditsRemaining} application credits remaining.`
+            : "Your CV is unlocked."
+        );
+
+        window.sessionStorage.removeItem("applyfast_locked_preview");
+        window.sessionStorage.removeItem("applyfast_draft");
+
+        window.history.replaceState({}, "", window.location.pathname);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not unlock your CV."
+        );
+      } finally {
+        setUnlockLoading(false);
       }
-    } catch {
-      // Keep the app usable even if browser storage is unavailable.
     }
+
+    restoreAndUnlock();
   }, []);
 
   useEffect(() => {
@@ -213,17 +310,33 @@ export default function Home() {
     }
   }
 
-  async function sendLoginCode() {
-    setAuthMessage("");
+  function saveLockedPreview(data: {
+    generationId: string;
+    previewName?: string;
+    previewEmail?: string;
+    matchScore?: number;
+  }) {
+    try {
+      window.sessionStorage.setItem(
+        "applyfast_locked_preview",
+        JSON.stringify(data)
+      );
+    } catch {
+      // Ignore storage errors.
+    }
+  }
 
-    const normalizedEmail = authEmail.trim();
+  async function sendReturningSignIn() {
+    setReturningMessage("");
 
-    if (!normalizedEmail) {
-      setAuthMessage("Enter your email address.");
+    const normalizedEmail = returningEmail.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setReturningMessage("Enter a valid email address.");
       return;
     }
 
-    setAuthLoading(true);
+    setReturningLoading(true);
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -240,96 +353,56 @@ export default function Home() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Could not send the login code. Please try again."
+          data.error || "Could not send the sign-in email."
         );
       }
 
-      setAuthCodeSent(true);
-      setAuthMessage("We sent a 6-digit login code to your email.");
+      setReturningMessage(
+        "Check your email and use the ApplyFast sign-in link. Then come back here and use your saved credits."
+      );
     } catch (err) {
-      setAuthMessage(
+      setReturningMessage(
         err instanceof Error
           ? err.message
-          : "Could not send the login code."
+          : "Could not send the sign-in email."
       );
     } finally {
-      setAuthLoading(false);
+      setReturningLoading(false);
     }
   }
 
-  async function verifyLoginCode() {
-    setAuthMessage("");
+  async function startCheckout() {
+    setPaymentMessage("");
 
-    const normalizedEmail = authEmail.trim();
-    const normalizedCode = authCode.trim();
+    const normalizedEmail = paymentEmail.trim().toLowerCase();
 
-    if (!normalizedEmail) {
-      setAuthMessage("Enter your email address.");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setPaymentMessage("Enter a valid email address first.");
       return;
     }
 
-    if (!/^\d{6}$/.test(normalizedCode)) {
-      setAuthMessage("Enter the 6-digit code from your email.");
+    if (!lockedGenerationId) {
+      setPaymentMessage("Generate your CV preview first.");
       return;
     }
 
-    setAuthLoading(true);
+    setPaymentLoading(true);
 
     try {
-      const response = await fetch("/api/auth/verify", {
+      const response = await fetch("/api/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           email: normalizedEmail,
-          token: normalizedCode,
+          generationId: lockedGenerationId,
         }),
       });
 
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(
-          data.error || "That code is invalid or expired. Please try again."
-        );
-      }
-
-      setAuthMessage("Signed in successfully.");
-      setAuthStep(null);
-
-      // Continue immediately using the text that is still on the page.
-      window.setTimeout(() => {
-        generate();
-      }, 100);
-    } catch (err) {
-      setAuthMessage(
-        err instanceof Error
-          ? err.message
-          : "Could not verify the login code."
-      );
-    } finally {
-      setAuthLoading(false);
-    }
-  }
-
-  async function startCheckout() {
-    setAuthMessage("");
-    setAuthLoading(true);
-
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          setAuthStep("login");
-          throw new Error("Sign in first, then continue to payment.");
-        }
-
         throw new Error(
           data.error || "Could not start checkout. Please try again."
         );
@@ -340,19 +413,22 @@ export default function Home() {
       }
 
       saveDraft();
+
       window.location.href = data.url;
     } catch (err) {
-      setAuthMessage(
+      setPaymentMessage(
         err instanceof Error
           ? err.message
           : "Could not start checkout."
       );
-      setAuthLoading(false);
+      setPaymentLoading(false);
     }
   }
 
   async function generate() {
     setError("");
+    setPaymentMessage("");
+    setPaymentNotice("");
     setResult(null);
 
     if (
@@ -369,17 +445,14 @@ export default function Home() {
     }
 
     saveDraft();
-    setPaymentNotice("");
     setLoading(true);
 
     try {
       const response = await fetch("/api/tailor", {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           mode,
           cvText,
@@ -396,7 +469,6 @@ export default function Home() {
       let data: Result & {
         error?: string;
         message?: string;
-        credits?: number;
       } = {};
 
       if (rawBody.trim()) {
@@ -409,18 +481,6 @@ export default function Home() {
         }
       }
 
-      if (response.status === 401) {
-        setAuthStep("login");
-        setAuthMessage("");
-        return;
-      }
-
-      if (response.status === 402) {
-        setAuthStep("payment");
-        setAuthMessage("");
-        return;
-      }
-
       if (!response.ok) {
         throw new Error(
           data.message ||
@@ -429,11 +489,64 @@ export default function Home() {
         );
       }
 
-      setAuthStep(null);
-      setPaymentNotice("");
+      if (data.locked && data.generationId) {
+        const nextPreviewName =
+          cleanText(data.previewName) ||
+          cleanText(fullName) ||
+          (mode === "tailor" ? extractNameFromText(cvText) : "") ||
+          "Your CV";
+
+        const nextPreviewEmail =
+          cleanText(data.previewEmail) ||
+          cleanText(email) ||
+          (mode === "tailor" ? extractEmailFromText(cvText) : "");
+
+        setLockedGenerationId(data.generationId);
+        setLockedPreviewName(nextPreviewName);
+        setLockedPreviewEmail(nextPreviewEmail);
+        setLockedMatchScore(
+          typeof data.matchScore === "number"
+            ? data.matchScore
+            : null
+        );
+
+        if (
+          nextPreviewEmail &&
+          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextPreviewEmail)
+        ) {
+          setPaymentEmail(nextPreviewEmail);
+        }
+
+        saveLockedPreview({
+          generationId: data.generationId,
+          previewName: nextPreviewName,
+          previewEmail: nextPreviewEmail,
+          matchScore:
+            typeof data.matchScore === "number"
+              ? data.matchScore
+              : undefined,
+        });
+
+        window.setTimeout(() => {
+          document
+            .getElementById("locked-preview")
+            ?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+        }, 100);
+
+        return;
+      }
+
+      setLockedGenerationId("");
+      setLockedPreviewName("");
+      setLockedPreviewEmail("");
+      setLockedMatchScore(null);
       setResult(data);
 
       try {
+        window.sessionStorage.removeItem("applyfast_locked_preview");
         window.sessionStorage.removeItem("applyfast_draft");
       } catch {
         // Ignore storage errors.
@@ -453,8 +566,18 @@ export default function Home() {
     setMode(newMode);
     setResult(null);
     setError("");
-    setAuthStep(null);
-    setAuthMessage("");
+    setPaymentMessage("");
+    setPaymentNotice("");
+    setLockedGenerationId("");
+    setLockedPreviewName("");
+    setLockedPreviewEmail("");
+    setLockedMatchScore(null);
+
+    try {
+      window.sessionStorage.removeItem("applyfast_locked_preview");
+    } catch {
+      // Ignore storage errors.
+    }
   }
 
   const cv = result?.cv;
@@ -469,11 +592,14 @@ export default function Home() {
     getDrivingLicenceItems(cv?.drivingLicence);
 
   const previewName =
+    cleanText(lockedPreviewName) ||
     cleanText(fullName) ||
     (mode === "tailor" ? extractNameFromText(cvText) : "") ||
     "Your Name";
 
   const previewEmail =
+    cleanText(lockedPreviewEmail) ||
+    cleanText(paymentEmail) ||
     cleanText(email) ||
     (mode === "tailor" ? extractEmailFromText(cvText) : "") ||
     "your@email.com";
@@ -674,9 +800,37 @@ export default function Home() {
           ApplyFast
         </a>
 
-        <span className="pricePill">
-          10 applications — €6.99 one-time
-        </span>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.65rem",
+            alignItems: "center",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setReturningOpen((value) => !value);
+              setReturningMessage("");
+            }}
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "transparent",
+              color: "inherit",
+              borderRadius: "999px",
+              padding: "0.55rem 0.8rem",
+              cursor: "pointer",
+            }}
+          >
+            Already have credits? Sign in
+          </button>
+
+          <span className="pricePill">
+            10 applications — €6.99 one-time
+          </span>
+        </div>
       </header>
 
       <section
@@ -693,6 +847,60 @@ export default function Home() {
             Don&apos;t have one? Build one in minutes.
           </p>
         </div>
+
+        {returningOpen && (
+          <div
+            style={{
+              margin: "0 auto 1rem",
+              maxWidth: "760px",
+              padding: "1rem",
+              borderRadius: "16px",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(255,255,255,0.05)",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Use your saved credits</h3>
+
+            <p style={{ opacity: 0.78 }}>
+              Enter the same email you used when you paid.
+            </p>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "0.75rem",
+              }}
+            >
+              <input
+                type="email"
+                value={returningEmail}
+                onChange={(e) => setReturningEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+
+              <button
+                type="button"
+                className="generateButton"
+                onClick={sendReturningSignIn}
+                disabled={returningLoading}
+              >
+                <span>
+                  {returningLoading
+                    ? "Sending sign-in email..."
+                    : "Send sign-in email"}
+                </span>
+                <span>→</span>
+              </button>
+
+              {returningMessage && (
+                <p style={{ margin: 0 }}>
+                  {returningMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {paymentNotice && (
           <div
@@ -908,117 +1116,18 @@ can start soon`}
             </div>
           )}
 
-          {authStep === "login" && (
+          {lockedGenerationId && (
             <div
+              id="locked-preview"
               style={{
-                marginTop: "1rem",
-                padding: "1rem",
-                border: "1px solid rgba(255,255,255,0.14)",
-                borderRadius: "16px",
-                background: "rgba(255,255,255,0.04)",
+                marginTop: "1.2rem",
               }}
             >
-              <h3 style={{ margin: 0 }}>Sign in to continue</h3>
-
-              <p style={{ marginTop: "0.45rem", opacity: 0.78 }}>
-                Stay on this page. We&apos;ll email you a 6-digit login code.
-              </p>
-
-              <div
-                style={{
-                  display: "grid",
-                  gap: "0.75rem",
-                  marginTop: "0.9rem",
-                }}
-              >
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  disabled={authCodeSent}
-                />
-
-                {!authCodeSent ? (
-                  <button
-                    type="button"
-                    className="generateButton"
-                    onClick={sendLoginCode}
-                    disabled={authLoading}
-                  >
-                    <span>
-                      {authLoading ? "Sending code..." : "Send 6-digit code"}
-                    </span>
-                    <span>→</span>
-                  </button>
-                ) : (
-                  <>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      value={authCode}
-                      onChange={(e) =>
-                        setAuthCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                      }
-                      placeholder="6-digit code"
-                      autoComplete="one-time-code"
-                    />
-
-                    <button
-                      type="button"
-                      className="generateButton"
-                      onClick={verifyLoginCode}
-                      disabled={authLoading}
-                    >
-                      <span>
-                        {authLoading ? "Checking code..." : "Verify & continue"}
-                      </span>
-                      <span>→</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthCodeSent(false);
-                        setAuthCode("");
-                        setAuthMessage("");
-                      }}
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        color: "inherit",
-                        opacity: 0.7,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Use a different email
-                    </button>
-                  </>
-                )}
-              </div>
-
-              {authMessage && (
-                <p
-                  style={{
-                    marginTop: "0.8rem",
-                    marginBottom: 0,
-                  }}
-                >
-                  {authMessage}
-                </p>
-              )}
-            </div>
-          )}
-
-          {authStep === "payment" && (
-            <div style={{ marginTop: "1rem" }}>
               <div
                 style={{
                   position: "relative",
                   overflow: "hidden",
-                  minHeight: "520px",
+                  minHeight: "560px",
                   borderRadius: "18px",
                   border: "1px solid rgba(255,255,255,0.14)",
                   background: "#fff",
@@ -1027,38 +1136,75 @@ can start soon`}
                 }}
               >
                 <div style={{ position: "relative", zIndex: 1 }}>
-                  <h2 style={{ marginBottom: "0.25rem" }}>{previewName}</h2>
-                  <p style={{ marginTop: 0, opacity: 0.7 }}>{previewEmail}</p>
+                  <h2 style={{ marginBottom: "0.25rem" }}>
+                    {previewName}
+                  </h2>
+
+                  <p style={{ marginTop: 0, opacity: 0.7 }}>
+                    {paymentEmail.trim() || previewEmail}
+                  </p>
+
+                  {typeof lockedMatchScore === "number" && (
+                    <p
+                      style={{
+                        display: "inline-block",
+                        marginTop: "0.5rem",
+                        padding: "0.4rem 0.65rem",
+                        borderRadius: "999px",
+                        background: "#f1f1f1",
+                      }}
+                    >
+                      {mode === "tailor"
+                        ? `Match score: ${lockedMatchScore}%`
+                        : `Profile strength: ${lockedMatchScore}%`}
+                    </p>
+                  )}
 
                   <div
                     style={{
-                      filter: "blur(7px)",
+                      filter: "blur(8px)",
                       userSelect: "none",
-                      opacity: 0.55,
+                      opacity: 0.52,
                       marginTop: "2rem",
                     }}
                     aria-hidden="true"
                   >
                     <h3>Professional Profile</h3>
+
                     <p>
                       Experienced and reliable professional with practical
-                      experience and a strong work ethic. Skilled in daily
-                      operations, teamwork and completing tasks efficiently.
+                      experience, relevant strengths and a clear professional
+                      profile tailored to the selected opportunity.
                     </p>
 
-                    <h3 style={{ marginTop: "2rem" }}>Work Experience</h3>
+                    <h3 style={{ marginTop: "2rem" }}>
+                      Work Experience
+                    </h3>
+
                     <p>
-                      Professional experience tailored to the selected vacancy,
-                      including relevant responsibilities and transferable skills.
+                      Relevant work history, responsibilities and professional
+                      achievements prepared from the information provided.
                     </p>
+
                     <p>
-                      Key achievements and job-specific experience are included
-                      in the unlocked version.
+                      Job-specific wording and transferable experience are
+                      included in the unlocked version.
                     </p>
 
                     <h3 style={{ marginTop: "2rem" }}>Skills</h3>
+
                     <p>
-                      Communication · Teamwork · Reliability · Job-specific skills
+                      Communication · Teamwork · Reliability · Relevant
+                      job-specific skills
+                    </p>
+
+                    <h3 style={{ marginTop: "2rem" }}>
+                      Cover Letter
+                    </h3>
+
+                    <p>
+                      A tailored cover letter is included with the full
+                      application package.
                     </p>
                   </div>
                 </div>
@@ -1072,51 +1218,107 @@ can start soon`}
                     placeItems: "center",
                     padding: "1.25rem",
                     background:
-                      "linear-gradient(to bottom, rgba(255,255,255,0.06), rgba(8,8,8,0.70))",
+                      "linear-gradient(to bottom, rgba(255,255,255,0.02), rgba(8,8,8,0.72))",
                   }}
                 >
                   <div
                     style={{
-                      width: "min(92%, 430px)",
+                      width: "min(94%, 460px)",
                       padding: "1.25rem",
                       borderRadius: "18px",
-                      background: "rgba(10,10,10,0.95)",
+                      background: "rgba(10,10,10,0.96)",
                       color: "#fff",
-                      textAlign: "center",
                       boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
                     }}
                   >
-                    <p className="eyebrow" style={{ marginTop: 0 }}>
-                      YOUR CV IS READY TO UNLOCK
+                    <p
+                      className="eyebrow"
+                      style={{ marginTop: 0 }}
+                    >
+                      YOUR APPLICATION IS READY
                     </p>
 
-                    <h3 style={{ margin: "0.4rem 0" }}>
-                      Unlock the full CV + 10 applications
+                    <h3 style={{ margin: "0.35rem 0" }}>
+                      Unlock your full CV
                     </h3>
 
                     <p style={{ opacity: 0.78 }}>
-                      One-time payment of €6.99. Your full generated CV stays
-                      locked until you have credits.
+                      Enter your email first. Your 10 credits will be saved
+                      to this email after payment.
                     </p>
+
+                    <input
+                      type="email"
+                      value={paymentEmail}
+                      onChange={(e) => {
+                        setPaymentEmail(e.target.value);
+                        setPaymentMessage("");
+                      }}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        margin: "0.45rem 0 0.75rem",
+                      }}
+                    />
 
                     <button
                       type="button"
                       className="generateButton"
                       onClick={startCheckout}
-                      disabled={authLoading}
+                      disabled={
+                        paymentLoading ||
+                        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                          paymentEmail.trim()
+                        )
+                      }
                     >
                       <span>
-                        {authLoading ? "Opening checkout..." : "Unlock — €6.99"}
+                        {paymentLoading
+                          ? "Opening secure checkout..."
+                          : "Continue to payment — €6.99"}
                       </span>
                       <span>→</span>
                     </button>
 
-                    {authMessage && (
-                      <p style={{ marginBottom: 0 }}>{authMessage}</p>
+                    <p
+                      style={{
+                        marginBottom: 0,
+                        marginTop: "0.7rem",
+                        opacity: 0.7,
+                        fontSize: "0.9rem",
+                      }}
+                    >
+                      One-time payment · 10 application credits
+                    </p>
+
+                    {paymentMessage && (
+                      <p
+                        style={{
+                          marginBottom: 0,
+                          marginTop: "0.75rem",
+                        }}
+                      >
+                        {paymentMessage}
+                      </p>
                     )}
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {unlockLoading && (
+            <div
+              style={{
+                marginTop: "1rem",
+                padding: "1rem",
+                borderRadius: "14px",
+                border: "1px solid rgba(255,255,255,0.14)",
+              }}
+            >
+              Verifying payment and unlocking your CV...
             </div>
           )}
         </section>
@@ -1180,6 +1382,21 @@ can start soon`}
                 </span>
               )}
             </div>
+
+            {result.accountEmail &&
+              typeof result.creditsRemaining === "number" &&
+              result.creditsRemaining > 0 && (
+                <p
+                  style={{
+                    marginTop: "-0.35rem",
+                    marginBottom: "1rem",
+                    opacity: 0.72,
+                  }}
+                >
+                  Your remaining credits are saved to {result.accountEmail}.
+                  Next time, use “Already have credits? Sign in”.
+                </p>
+              )}
 
             {hasItems(
               result.missingKeywords
