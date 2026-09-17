@@ -131,6 +131,8 @@ export default function Home() {
 
   const [authStep, setAuthStep] = useState<"login" | "payment" | null>(null);
   const [authEmail, setAuthEmail] = useState("");
+  const [authCode, setAuthCode] = useState("");
+  const [authCodeSent, setAuthCodeSent] = useState(false);
   const [authMessage, setAuthMessage] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [paymentNotice, setPaymentNotice] = useState("");
@@ -211,7 +213,7 @@ export default function Home() {
     }
   }
 
-  async function sendLoginLink() {
+  async function sendLoginCode() {
     setAuthMessage("");
 
     const normalizedEmail = authEmail.trim();
@@ -238,16 +240,73 @@ export default function Home() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || "Could not send the login email. Please try again."
+          data.error || "Could not send the login code. Please try again."
         );
       }
 
-      setAuthMessage("Check your email. We sent you a secure login link.");
+      setAuthCodeSent(true);
+      setAuthMessage("We sent a 6-digit login code to your email.");
     } catch (err) {
       setAuthMessage(
         err instanceof Error
           ? err.message
-          : "Could not send the login email."
+          : "Could not send the login code."
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function verifyLoginCode() {
+    setAuthMessage("");
+
+    const normalizedEmail = authEmail.trim();
+    const normalizedCode = authCode.trim();
+
+    if (!normalizedEmail) {
+      setAuthMessage("Enter your email address.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      setAuthMessage("Enter the 6-digit code from your email.");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          token: normalizedCode,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || "That code is invalid or expired. Please try again."
+        );
+      }
+
+      setAuthMessage("Signed in successfully.");
+      setAuthStep(null);
+
+      // Continue immediately using the text that is still on the page.
+      window.setTimeout(() => {
+        generate();
+      }, 100);
+    } catch (err) {
+      setAuthMessage(
+        err instanceof Error
+          ? err.message
+          : "Could not verify the login code."
       );
     } finally {
       setAuthLoading(false);
@@ -862,7 +921,7 @@ can start soon`}
               <h3 style={{ margin: 0 }}>Sign in to continue</h3>
 
               <p style={{ marginTop: "0.45rem", opacity: 0.78 }}>
-                Enter your email. We&apos;ll send you a secure login link — no password.
+                Stay on this page. We&apos;ll email you a 6-digit login code.
               </p>
 
               <div
@@ -878,19 +937,66 @@ can start soon`}
                   onChange={(e) => setAuthEmail(e.target.value)}
                   placeholder="you@example.com"
                   autoComplete="email"
+                  disabled={authCodeSent}
                 />
 
-                <button
-                  type="button"
-                  className="generateButton"
-                  onClick={sendLoginLink}
-                  disabled={authLoading}
-                >
-                  <span>
-                    {authLoading ? "Sending login link..." : "Email me a login link"}
-                  </span>
-                  <span>→</span>
-                </button>
+                {!authCodeSent ? (
+                  <button
+                    type="button"
+                    className="generateButton"
+                    onClick={sendLoginCode}
+                    disabled={authLoading}
+                  >
+                    <span>
+                      {authLoading ? "Sending code..." : "Send 6-digit code"}
+                    </span>
+                    <span>→</span>
+                  </button>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={authCode}
+                      onChange={(e) =>
+                        setAuthCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      placeholder="6-digit code"
+                      autoComplete="one-time-code"
+                    />
+
+                    <button
+                      type="button"
+                      className="generateButton"
+                      onClick={verifyLoginCode}
+                      disabled={authLoading}
+                    >
+                      <span>
+                        {authLoading ? "Checking code..." : "Verify & continue"}
+                      </span>
+                      <span>→</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthCodeSent(false);
+                        setAuthCode("");
+                        setAuthMessage("");
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        color: "inherit",
+                        opacity: 0.7,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Use a different email
+                    </button>
+                  </>
+                )}
               </div>
 
               {authMessage && (
