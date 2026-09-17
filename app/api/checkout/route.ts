@@ -1,20 +1,21 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
+type CheckoutRequest = {
+  email?: string;
+  generationId?: string;
+};
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export async function POST(request: Request) {
   try {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return Response.json(
-        { error: "Stripe is not configured." },
-        { status: 500 }
-      );
-    }
-
     if (
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.SUPABASE_ANON_KEY
+      !process.env.SUPABASE_SECRET_KEY
     ) {
       return Response.json(
         { error: "Supabase is not configured." },
@@ -22,65 +23,133 @@ export async function POST(request: Request) {
       );
     }
 
-    const cookieStore = await cookies();
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return Response.json(
+        { error: "Stripe is not configured." },
+        { status: 500 }
+      );
+    }
 
-    const supabase = createServerClient(
+    const body = (await request.json()) as CheckoutRequest;
+
+    const email =
+      typeof body.email === "string"
+        ? body.email.trim().toLowerCase()
+        : "";
+
+    const generationId =
+      typeof body.generationId === "string"
+        ? body.generationId.trim()
+        : "";
+
+    if (!email || !isValidEmail(email)) {
+      return Response.json(
+        { error: "Enter a valid email address." },
+        { status: 400 }
+      );
+    }
+
+    if (!generationId) {
+      return Response.json(
+        { error: "Missing generation ID." },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
+      process.env.SUPABASE_SECRET_KEY,
       {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
         },
       }
     );
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const { data: generation, error: generationError } = await supabase
+      .from("generations")
+      .select("id, status, stripe_session_id")
+      .eq("id", generationId)
+      .maybeSingle();
 
-    if (userError || !user) {
+    if (generationError) {
+      console.error("ApplyFast generation lookup error:", generationError);
+
       return Response.json(
-        { error: "LOGIN_REQUIRED" },
-        { status: 401 }
+        { error: "Could not load your CV preview." },
+        { status: 500 }
+      );
+    }
+
+    if (!generation) {
+      return Response.json(
+        { error: "This CV preview no longer exists." },
+        { status: 404 }
+      );
+    }
+
+    if (generation.status === "unlocked") {
+      return Response.json(
+        { error: "This CV has already been unlocked." },
+        { status: 409 }
+      );
+    }
+
+    const { error: emailSaveError } = await supabase
+      .from("generations")
+      .update({
+        email,
+      })
+      .eq("id", generationId)
+      .eq("status", "locked");
+
+    if (emailSaveError) {
+      console.error("ApplyFast email save error:", emailSaveError);
+
+      return Response.json(
+        { error: "Could not save your email." },
+        { status: 500 }
       );
     }
 
     const origin = new URL(request.url).origin;
 
-    const body = new URLSearchParams();
+    const stripeBody = new URLSearchParams();
 
-    body.set("mode", "payment");
-    body.set("success_url", `${origin}/?payment=success`);
-    body.set("cancel_url", `${origin}/?payment=cancel`);
+    stripeBody.set("mode", "payment");
+    stripeBody.set(
+      "success_url",
+      `${origin}/?payment=success&session_id={CHECKOUT_SESSION_ID}&generation_id=${encodeURIComponent(
+        generationId
+      )}`
+    );
+    stripeBody.set(
+      "cancel_url",
+      `${origin}/?payment=cancel&generation_id=${encodeURIComponent(
+        generationId
+      )}`
+    );
 
-    body.set("line_items[0][quantity]", "1");
-    body.set("line_items[0][price_data][currency]", "eur");
-    body.set("line_items[0][price_data][unit_amount]", "699");
+    stripeBody.set("customer_email", email);
 
-    body.set(
+    stripeBody.set("line_items[0][quantity]", "1");
+    stripeBody.set("line_items[0][price_data][currency]", "eur");
+    stripeBody.set("line_items[0][price_data][unit_amount]", "699");
+
+    stripeBody.set(
       "line_items[0][price_data][product_data][name]",
       "ApplyFast — 10 application credits"
     );
 
-    body.set(
+    stripeBody.set(
       "line_items[0][price_data][product_data][description]",
-      "10 CV application credits"
+      "Unlock your CV and get 10 ApplyFast application credits"
     );
 
-    body.set("metadata[user_id]", user.id);
-    body.set("metadata[credits]", "10");
-
-    if (user.email) {
-      body.set("customer_email", user.email);
-    }
+    stripeBody.set("metadata[email]", email);
+    stripeBody.set("metadata[generation_id]", generationId);
+    stripeBody.set("metadata[credits]", "10");
 
     const stripeResponse = await fetch(
       "https://api.stripe.com/v1/checkout/sessions",
@@ -90,17 +159,37 @@ export async function POST(request: Request) {
           Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: body.toString(),
+        body: stripeBody.toString(),
       }
     );
 
     const session = await stripeResponse.json();
 
-    if (!stripeResponse.ok || !session.url) {
+    if (!stripeResponse.ok || !session?.url || !session?.id) {
       console.error("Stripe checkout error:", session);
 
       return Response.json(
-        { error: "Could not start checkout." },
+        { error: "Could not start checkout. Please try again." },
+        { status: 500 }
+      );
+    }
+
+    const { error: sessionSaveError } = await supabase
+      .from("generations")
+      .update({
+        stripe_session_id: session.id,
+      })
+      .eq("id", generationId)
+      .eq("status", "locked");
+
+    if (sessionSaveError) {
+      console.error(
+        "ApplyFast Stripe session save error:",
+        sessionSaveError
+      );
+
+      return Response.json(
+        { error: "Could not prepare checkout. Please try again." },
         { status: 500 }
       );
     }
@@ -112,7 +201,7 @@ export async function POST(request: Request) {
     console.error("ApplyFast checkout error:", error);
 
     return Response.json(
-      { error: "Could not start checkout." },
+      { error: "Could not start checkout. Please try again." },
       { status: 500 }
     );
   }
