@@ -57,17 +57,15 @@ export async function POST(request: Request) {
     });
 
     if (error) {
-      console.error("ApplyFast returning sign-in error:", error);
+  console.error("ApplyFast returning sign-in error:", error);
 
-      return Response.json(
-        {
-          error:
-            "We could not send a sign-in email for this account. Use the same email you paid with.",
-        },
-        { status: 400 }
-      );
-    }
-
+  return Response.json(
+    {
+      error: error.message,
+    },
+    { status: 400 }
+  );
+}
     return Response.json({
       success: true,
       message: "Check your email for the newest ApplyFast sign-in link.",
