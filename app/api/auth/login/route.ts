@@ -1,4 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -7,9 +8,7 @@ export async function POST(request: Request) {
     const { email } = await request.json();
 
     const normalizedEmail =
-      typeof email === "string"
-        ? email.trim().toLowerCase()
-        : "";
+      typeof email === "string" ? email.trim().toLowerCase() : "";
 
     if (!normalizedEmail) {
       return Response.json(
@@ -28,9 +27,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const supabase = createClient(
+    const cookieStore = await cookies();
+
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY
+      process.env.SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          },
+        },
+      }
     );
 
     const origin = new URL(request.url).origin;
@@ -38,7 +51,7 @@ export async function POST(request: Request) {
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
-        emailRedirectTo: `${origin}/auth/callback`,
+        emailRedirectTo: `${origin}/auth/callback?next=/`,
         shouldCreateUser: false,
       },
     });
@@ -49,7 +62,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           error:
-            "We could not send a sign-in email for this account. Make sure you use the same email you paid with.",
+            "We could not send a sign-in email for this account. Use the same email you paid with.",
         },
         { status: 400 }
       );
@@ -57,7 +70,7 @@ export async function POST(request: Request) {
 
     return Response.json({
       success: true,
-      message: "Check your email for the ApplyFast sign-in link.",
+      message: "Check your email for the newest ApplyFast sign-in link.",
     });
   } catch (error) {
     console.error("ApplyFast returning sign-in route error:", error);
