@@ -1,4 +1,3 @@
-"use client";
 
 import { useEffect, useRef, useState } from "react";
 
@@ -174,9 +173,6 @@ export default function Home() {
           setAccountCredits(
             typeof data.credits === "number" ? data.credits : 0
           );
-
-          setReturningOpen(false);
-          setReturningMessage("");
         } else {
           setAccountEmail("");
           setAccountCredits(null);
@@ -918,55 +914,38 @@ export default function Home() {
             justifyContent: "flex-end",
           }}
         >
-          {!accountLoading && accountCredits !== null ? (
-            <>
-              <span
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  borderRadius: "999px",
-                  padding: "0.55rem 0.8rem",
-                  whiteSpace: "nowrap",
-                }}
-                title={accountEmail || undefined}
-              >
-                ✓ Signed in
-              </span>
-
-              <span
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(255,255,255,0.06)",
-                  borderRadius: "999px",
-                  padding: "0.55rem 0.8rem",
-                  whiteSpace: "nowrap",
-                }}
-                title={accountEmail || undefined}
-              >
-                {accountCredits} credits remaining
-              </span>
-            </>
-          ) : (
-            !accountLoading && (
-              <button
-                type="button"
-                onClick={() => {
-                  setReturningOpen((value) => !value);
-                  setReturningMessage("");
-                }}
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "transparent",
-                  color: "inherit",
-                  borderRadius: "999px",
-                  padding: "0.55rem 0.8rem",
-                  cursor: "pointer",
-                }}
-              >
-                Already have credits? Sign in
-              </button>
-            )
+          {!accountLoading && accountCredits !== null && (
+            <span
+              style={{
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.06)",
+                borderRadius: "999px",
+                padding: "0.55rem 0.8rem",
+                whiteSpace: "nowrap",
+              }}
+              title={accountEmail || undefined}
+            >
+              {accountCredits} credits remaining
+            </span>
           )}
+
+          <button
+            type="button"
+            onClick={() => {
+              setReturningOpen((value) => !value);
+              setReturningMessage("");
+            }}
+            style={{
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "transparent",
+              color: "inherit",
+              borderRadius: "999px",
+              padding: "0.55rem 0.8rem",
+              cursor: "pointer",
+            }}
+          >
+            Already have credits? Sign in
+          </button>
 
           <span className="pricePill">
             10 applications — €6.99 one-time
@@ -989,7 +968,7 @@ export default function Home() {
           </p>
         </div>
 
-        {returningOpen && accountCredits === null && (
+        {returningOpen && (
           <div
             style={{
               margin: "0 auto 1rem",
@@ -1535,7 +1514,6 @@ can start soon`}
                   }}
                 >
                   Your remaining credits are saved to {result.accountEmail || accountEmail}.
-                  Next time, use “Already have credits? Sign in”.
                 </p>
               )}
 
