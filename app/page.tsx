@@ -198,6 +198,18 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const canonicalHost = "applyfast-six.vercel.app";
+
+    if (
+      window.location.hostname.endsWith(".vercel.app") &&
+      window.location.hostname !== canonicalHost
+    ) {
+      window.location.replace(
+        `https://${canonicalHost}${window.location.pathname}${window.location.search}${window.location.hash}`
+      );
+      return;
+    }
+
     async function loadAccount() {
       try {
         const response = await fetch("/api/account", {
