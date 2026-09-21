@@ -23,9 +23,32 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY || "";
+
+    if (!stripeSecretKey) {
       return Response.json(
         { error: "Stripe is not configured." },
+        { status: 500 }
+      );
+    }
+
+    if (stripeSecretKey.startsWith("sk_test_")) {
+      console.error("ApplyFast production checkout is using a Stripe TEST key.");
+
+      return Response.json(
+        {
+          error:
+            "Stripe is still using Test mode on this deployment. Open the main ApplyFast website and try again.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!stripeSecretKey.startsWith("sk_live_")) {
+      console.error("ApplyFast Stripe key is not a live secret key.");
+
+      return Response.json(
+        { error: "Stripe live payments are not configured correctly." },
         { status: 500 }
       );
     }
@@ -98,9 +121,7 @@ export async function POST(request: Request) {
 
     const { error: emailSaveError } = await supabase
       .from("generations")
-      .update({
-        email,
-      })
+      .update({ email })
       .eq("id", generationId)
       .eq("status", "locked");
 
@@ -113,7 +134,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = new URL(request.url).origin;
+    const origin = "https://applyfast-six.vercel.app";
 
     const stripeBody = new URLSearchParams();
 
@@ -136,12 +157,10 @@ export async function POST(request: Request) {
     stripeBody.set("line_items[0][quantity]", "1");
     stripeBody.set("line_items[0][price_data][currency]", "eur");
     stripeBody.set("line_items[0][price_data][unit_amount]", "699");
-
     stripeBody.set(
       "line_items[0][price_data][product_data][name]",
       "ApplyFast — 10 application credits"
     );
-
     stripeBody.set(
       "line_items[0][price_data][product_data][description]",
       "Unlock your CV and get 10 ApplyFast application credits"
@@ -156,7 +175,7 @@ export async function POST(request: Request) {
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,
+          Authorization: `Bearer ${stripeSecretKey}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
         body: stripeBody.toString(),
@@ -176,9 +195,7 @@ export async function POST(request: Request) {
 
     const { error: sessionSaveError } = await supabase
       .from("generations")
-      .update({
-        stripe_session_id: session.id,
-      })
+      .update({ stripe_session_id: session.id })
       .eq("id", generationId)
       .eq("status", "locked");
 
@@ -194,9 +211,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({
-      url: session.url,
-    });
+    return Response.json({ url: session.url });
   } catch (error) {
     console.error("ApplyFast checkout error:", error);
 
