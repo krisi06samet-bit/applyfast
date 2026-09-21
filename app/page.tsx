@@ -170,8 +170,7 @@ export default function Home() {
         throw new Error("Could not sign out.");
       }
 
-      // IMPORTANT:
-      // Never restore the previous customer's paid CV/account after logout.
+      // Remove all local pointers/drafts from the previous account.
       window.localStorage.removeItem("applyfast_last_unlocked");
       window.sessionStorage.removeItem("applyfast_locked_preview");
       window.sessionStorage.removeItem("applyfast_draft");
@@ -189,8 +188,8 @@ export default function Home() {
       setLockedPreviewEmail("");
       setLockedMatchScore(null);
 
-      // Full reload guarantees the browser re-checks the cleared Supabase cookies.
-      window.location.replace("/");
+      // Hard reload from a clean URL after the server clears auth cookies.
+      window.location.replace("/?logged_out=1");
     } catch (error) {
       console.error("ApplyFast logout failed:", error);
       setAccountLoading(false);
@@ -198,18 +197,6 @@ export default function Home() {
   }
 
   useEffect(() => {
-    const canonicalHost = "applyfast-six.vercel.app";
-
-    if (
-      window.location.hostname.endsWith(".vercel.app") &&
-      window.location.hostname !== canonicalHost
-    ) {
-      window.location.replace(
-        `https://${canonicalHost}${window.location.pathname}${window.location.search}${window.location.hash}`
-      );
-      return;
-    }
-
     async function loadAccount() {
       try {
         const response = await fetch("/api/account", {
