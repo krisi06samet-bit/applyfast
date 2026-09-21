@@ -35,10 +35,8 @@ export async function POST() {
       }
     );
 
-    // Ask Supabase to invalidate the current browser session.
     await supabase.auth.signOut();
 
-    // Extra safety: expire any Supabase auth cookies that may remain.
     for (const cookie of cookieStore.getAll()) {
       if (
         cookie.name.startsWith("sb-") ||
@@ -57,7 +55,8 @@ export async function POST() {
       {
         status: 200,
         headers: {
-          "Cache-Control": "no-store",
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+          Pragma: "no-cache",
         },
       }
     );
