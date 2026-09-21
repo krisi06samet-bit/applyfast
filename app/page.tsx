@@ -160,9 +160,21 @@ export default function Home() {
     try {
       setAccountLoading(true);
 
-      await fetch("/api/auth/logout", {
+      const response = await fetch("/api/auth/logout", {
         method: "POST",
+        credentials: "include",
+        cache: "no-store",
       });
+
+      if (!response.ok) {
+        throw new Error("Could not sign out.");
+      }
+
+      // IMPORTANT:
+      // Never restore the previous customer's paid CV/account after logout.
+      window.localStorage.removeItem("applyfast_last_unlocked");
+      window.sessionStorage.removeItem("applyfast_locked_preview");
+      window.sessionStorage.removeItem("applyfast_draft");
 
       setAccountEmail("");
       setAccountCredits(null);
@@ -171,9 +183,16 @@ export default function Home() {
       setResult(null);
       setPaymentNotice("");
       setPaymentMessage("");
+      setPaymentEmail("");
+      setLockedGenerationId("");
+      setLockedPreviewName("");
+      setLockedPreviewEmail("");
+      setLockedMatchScore(null);
 
-      window.history.replaceState({}, "", "/");
-    } finally {
+      // Full reload guarantees the browser re-checks the cleared Supabase cookies.
+      window.location.replace("/");
+    } catch (error) {
+      console.error("ApplyFast logout failed:", error);
       setAccountLoading(false);
     }
   }
