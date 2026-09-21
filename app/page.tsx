@@ -156,6 +156,28 @@ export default function Home() {
 
   const resultRef = useRef<HTMLElement | null>(null);
 
+  async function handleLogout() {
+    try {
+      setAccountLoading(true);
+
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+
+      setAccountEmail("");
+      setAccountCredits(null);
+      setReturningOpen(false);
+      setReturningMessage("");
+      setResult(null);
+      setPaymentNotice("");
+      setPaymentMessage("");
+
+      window.history.replaceState({}, "", "/");
+    } finally {
+      setAccountLoading(false);
+    }
+  }
+
   useEffect(() => {
     async function loadAccount() {
       try {
@@ -945,6 +967,22 @@ export default function Home() {
               >
                 {accountCredits} credits remaining
               </span>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "transparent",
+                  color: "inherit",
+                  borderRadius: "999px",
+                  padding: "0.55rem 0.8rem",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Log out
+              </button>
             </>
           ) : (
             !accountLoading && (
