@@ -170,10 +170,9 @@ export default function Home() {
         throw new Error("Could not sign out.");
       }
 
-      // Remove all local pointers/drafts from the previous account.
-      window.localStorage.removeItem("applyfast_last_unlocked");
-      window.sessionStorage.removeItem("applyfast_locked_preview");
-      window.sessionStorage.removeItem("applyfast_draft");
+      localStorage.removeItem("applyfast_last_unlocked");
+      sessionStorage.removeItem("applyfast_locked_preview");
+      sessionStorage.removeItem("applyfast_draft");
 
       setAccountEmail("");
       setAccountCredits(null);
@@ -188,8 +187,7 @@ export default function Home() {
       setLockedPreviewEmail("");
       setLockedMatchScore(null);
 
-      // Hard reload from a clean URL after the server clears auth cookies.
-      window.location.replace("/?logged_out=1");
+      window.location.href = "/";
     } catch (error) {
       console.error("ApplyFast logout failed:", error);
       setAccountLoading(false);
