@@ -1,53 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    if (
-      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.SUPABASE_ANON_KEY
-    ) {
-      return Response.json(
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return NextResponse.json(
         { error: "Supabase is not configured." },
         { status: 500 }
       );
     }
 
-    const cookieStore = await cookies();
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          },
-        },
-      }
-    );
-
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error("Supabase signOut error:", error);
-
-      return Response.json(
-        { error: error.message || "Could not sign out." },
-        { status: 500 }
-      );
-    }
-
-    return Response.json(
+    const response = NextResponse.json(
       { success: true },
       {
         status: 200,
@@ -57,10 +26,57 @@ export async function POST() {
         },
       }
     );
+
+    const supabase = createServerClient(
+      supabaseUrl,
+      supabaseAnonKey,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options);
+            });
+          },
+        },
+      }
+    );
+
+    const { error } = await supabase.auth.signOut({
+      scope: "local",
+    });
+
+    if (error) {
+      console.error("Supabase logout error:", error);
+    }
+
+    // Force-delete every Supabase auth cookie
+    request.cookies.getAll().forEach((cookie) => {
+      const name = cookie.name.toLowerCase();
+
+      if (
+        name.startsWith("sb-") ||
+        name.includes("supabase")
+      ) {
+        response.cookies.set(cookie.name, "", {
+          path: "/",
+          expires: new Date(0),
+          maxAge: 0,
+          httpOnly: true,
+          sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
+        });
+      }
+    });
+
+    return response;
   } catch (error) {
     console.error("ApplyFast logout route error:", error);
 
-    return Response.json(
+    return NextResponse.json(
       { error: "Could not sign out." },
       { status: 500 }
     );
