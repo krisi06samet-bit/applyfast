@@ -6,41 +6,40 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const response = NextResponse.json(
-      { success: true },
       {
-        status: 200,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate",
-          Pragma: "no-cache",
-        },
-      }
+        success: true,
+      },
+      { status: 200 }
     );
 
-    const allCookies = request.cookies.getAll();
+    const cookies = request.cookies.getAll();
 
-    for (const cookie of allCookies) {
-      const cookieName = cookie.name.toLowerCase();
+    for (const cookie of cookies) {
+      const name = cookie.name.toLowerCase();
 
       if (
-        cookieName.startsWith("sb-") ||
-        cookieName.includes("supabase")
+        name.startsWith("sb-") ||
+        name.includes("supabase")
       ) {
         response.cookies.set(cookie.name, "", {
           path: "/",
           expires: new Date(0),
           maxAge: 0,
-          sameSite: "lax",
-          secure: process.env.NODE_ENV === "production",
         });
       }
     }
 
     return response;
   } catch (error) {
-    console.error("ApplyFast logout route error:", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
 
     return NextResponse.json(
-      { error: "Could not sign out." },
+      {
+        error: message,
+      },
       { status: 500 }
     );
   }
