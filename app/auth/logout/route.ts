@@ -26,6 +26,7 @@ export async function POST() {
           getAll() {
             return cookieStore.getAll();
           },
+
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options);
@@ -35,19 +36,15 @@ export async function POST() {
       }
     );
 
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
 
-    for (const cookie of cookieStore.getAll()) {
-      if (
-        cookie.name.startsWith("sb-") ||
-        cookie.name.toLowerCase().includes("supabase")
-      ) {
-        cookieStore.set(cookie.name, "", {
-          path: "/",
-          expires: new Date(0),
-          maxAge: 0,
-        });
-      }
+    if (error) {
+      console.error("Supabase signOut error:", error);
+
+      return Response.json(
+        { error: error.message || "Could not sign out." },
+        { status: 500 }
+      );
     }
 
     return Response.json(
