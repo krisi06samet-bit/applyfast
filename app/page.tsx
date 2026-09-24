@@ -969,9 +969,18 @@ export default function Home() {
           className="wordmark"
           href="#top"
         >
-          <span className="wordmarkMark">
-            A
-          </span>
+          <img
+            src="/applyfast-logo.jpeg"
+            alt="ApplyFast logo"
+            style={{
+              width: "34px",
+              height: "34px",
+              objectFit: "cover",
+              borderRadius: "8px",
+              display: "block",
+              flexShrink: 0,
+            }}
+          />
 
           ApplyFast
         </a>
